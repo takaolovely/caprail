@@ -3,6 +3,8 @@ import { AnimatePresence, motion } from "motion/react";
 import { Check, Copy, ExternalLink, FileJson, X } from "lucide-react";
 import {
   CAPRAIL_AGENT_CARD,
+  CAPRAIL_AGENT_WALLET,
+  CAPRAIL_METADATA,
   CELO_ERC8004_REGISTRY,
 } from "../data/mainnetProof.js";
 
@@ -68,21 +70,47 @@ export function AgentCardModal({ open, onClose }: AgentCardModalProps) {
             </div>
 
             <div className="space-y-4 p-5">
-              <div className="flex flex-wrap items-center justify-between gap-2 rounded-[10px] border border-[#e3e6eb] bg-[#f2f4ef] px-3.5 py-2.5 text-xs">
-                <div>
-                  <span className="text-[#5d7166]">Celo Mainnet Registry: </span>
-                  <span className="font-numeric font-medium text-[#15171c]">
-                    {CELO_ERC8004_REGISTRY}
+              <div className="space-y-2 rounded-[12px] border border-[#e3e6eb] bg-[#f2f4ef] px-3.5 py-3 text-xs">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="min-w-0">
+                    <span className="text-[#5d7166]">Primary Agent Wallet: </span>
+                    <span className="break-all font-numeric font-medium text-[#15171c]">
+                      {CAPRAIL_AGENT_WALLET}
+                    </span>
+                  </div>
+                  <a
+                    href={`https://celoscan.io/address/${CAPRAIL_AGENT_WALLET}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 font-medium text-[#10372a] hover:underline"
+                  >
+                    Celoscan <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+
+                <div className="flex flex-wrap items-center justify-between gap-2 border-t border-[#e3e6eb] pt-2">
+                  <div className="min-w-0">
+                    <span className="text-[#5d7166]">ERC-8004 Registry: </span>
+                    <span className="break-all font-numeric font-medium text-[#15171c]">
+                      {CELO_ERC8004_REGISTRY}
+                    </span>
+                  </div>
+                  <a
+                    href={`https://celoscan.io/address/${CELO_ERC8004_REGISTRY}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex shrink-0 items-center gap-1 font-medium text-[#10372a] hover:underline"
+                  >
+                    Registry <ExternalLink className="h-3 w-3" />
+                  </a>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-1.5 border-t border-[#e3e6eb] pt-2">
+                  <span className="text-[#5d7166]">ERC-8021 Attribution Tag:</span>
+                  <span className="rounded-full bg-[#e4f5eb] px-2 py-0.5 font-numeric text-[10.5px] font-semibold text-[#21744e]">
+                    {CAPRAIL_METADATA.attributionCode}
                   </span>
                 </div>
-                <a
-                  href={`https://celoscan.io/address/${CELO_ERC8004_REGISTRY}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-1 font-medium text-[#10372a] hover:underline"
-                >
-                  Celoscan <ExternalLink className="h-3 w-3" />
-                </a>
               </div>
 
               <div className="relative">

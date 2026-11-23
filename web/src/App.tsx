@@ -781,7 +781,7 @@ export function App() {
                   </a>
                   <span>· Celo Agents Open for Business</span>
                 </div>
-                <span>ERC-8021 celo_cbf00f366dda · Altana SDK v1.1.0</span>
+                <span>ERC-8021 {CAPRAIL_DEFAULT_ATTRIBUTION_CODE} · Altana SDK v1.1.0</span>
               </footer>
             </div>
           )}
@@ -859,7 +859,7 @@ export function App() {
                   </a>
                   <span>· Celo Agents Open for Business</span>
                 </div>
-                <span>ERC-8021 celo_cbf00f366dda · Altana SDK v1.1.0</span>
+                <span>ERC-8021 {CAPRAIL_DEFAULT_ATTRIBUTION_CODE} · Altana SDK v1.1.0</span>
               </footer>
             </div>
           )}

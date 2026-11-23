@@ -1,6 +1,7 @@
 import { CheckCircle2, ExternalLink, FileJson } from "lucide-react";
 import { GitHubIcon } from "./GitHubIcon.js";
 import {
+  CAPRAIL_AGENT_WALLET,
   CAPRAIL_GITHUB_URL,
   CAPRAIL_METADATA,
   CELO_CHAIN_ID,
@@ -78,6 +79,15 @@ export function VerifiedReceiptCard({
           <span className="font-numeric text-[11px] text-[#5d7166]">
             ERC-8021 {CAPRAIL_METADATA.attributionCode}
           </span>
+          <a
+            href={`https://celoscan.io/address/${CAPRAIL_AGENT_WALLET}`}
+            target="_blank"
+            rel="noreferrer"
+            className="inline-flex items-center gap-1 rounded-full border border-[#e3e6eb] bg-[#f2f4ef] px-2.5 py-0.5 font-numeric text-[10.5px] font-medium text-[#15171c] transition-colors hover:border-[#10372a] hover:text-[#10372a]"
+          >
+            <span>Agent Wallet {shortenAddress(CAPRAIL_AGENT_WALLET)}</span>
+            <ExternalLink className="h-2.5 w-2.5" />
+          </a>
         </div>
 
         <h3 className="mt-2.5 text-lg font-semibold text-[#15171c] sm:text-xl">

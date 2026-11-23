@@ -20,9 +20,9 @@ import {
 } from "@caprail/wallet/calldata.js";
 import { LocalSessionSimulator } from "@caprail/wallet/localSimulator.js";
 import type { WalletExecutionResult } from "@caprail/wallet/types.js";
+import { CAPRAIL_AGENT_WALLET } from "../data/mainnetProof.js";
 
-export const SANDBOX_WALLET_ADDRESS =
-  "0x1111111111111111111111111111111111111111" as Address;
+export const SANDBOX_WALLET_ADDRESS = CAPRAIL_AGENT_WALLET as Address;
 
 export const DEFAULT_SPLIT_RECIPIENTS: readonly SplitRecipient[] = [
   {

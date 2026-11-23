@@ -9,7 +9,8 @@ import { concatHex, createWalletClient, http, type Account, type Hex } from "vie
 import { celo } from "viem/chains";
 
 export const CAPRAIL_REPO_SLUG = "takaolovely/caprail";
-export const CAPRAIL_DEFAULT_ATTRIBUTION_CODE = codeFromRepo(CAPRAIL_REPO_SLUG);
+/** Official Loops House ERC-8021 builder attribution tag for CapRail */
+export const CAPRAIL_DEFAULT_ATTRIBUTION_CODE = "celo_0518175d3efe" as const;
 
 /**
  * Appends an ERC-8021 Celo attribution suffix to raw calldata for Altana relay calls.

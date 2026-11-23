@@ -33,7 +33,7 @@ const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
 const SEGMENT_COLORS = ["#10372a", "#21744e", "#7ea590"] as const;
 
 const DIAGONAL_RIBBON_TEXT =
-  "✓ 0x9280…954a Granted · ✓ 0xcb30…1c27 Split 0.05 USDC · ✕ call_not_permitted Blocked · ✕ spend_limit_exceeded Blocked · ✓ 0x1455…d320 Revoked · ERC-8021 celo_cbf00f366dda · ";
+  `✓ 0x9280…954a Granted · ✓ 0xcb30…1c27 Split 0.05 USDC · ✕ call_not_permitted Blocked · ✕ spend_limit_exceeded Blocked · ✓ 0x1455…d320 Revoked · ERC-8021 ${CAPRAIL_METADATA.attributionCode} · `;
 
 interface LandingPageProps {
   onNavigate: (route: AppRoute) => void;

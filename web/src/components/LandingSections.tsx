@@ -90,7 +90,7 @@ const BOARD_EVENTS: readonly BoardEventRow[] = [
     id: "ev-5",
     category: "AUTO_DCA",
     title: "Scheduled Hourly DCA Run",
-    detail: "Interval verified (3600s) · ERC-8021 celo_cbf00f366dda",
+    detail: `Interval verified (3600s) · ERC-8021 ${CAPRAIL_METADATA.attributionCode}`,
     amount: "$15.00",
     status: "APPROVED",
     tag: "ERC-8021 ✓",

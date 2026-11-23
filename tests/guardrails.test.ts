@@ -322,12 +322,13 @@ describe("AutoDcaEngine & RevenueSplitterEngine Guardrails (LOCAL_SIMULATION)", 
 
 describe("Real SDK Integration Helpers (Altana, ERC-8021 Attribution, ERC-8004)", () => {
   it("encodes and decodes ERC-8021 attribution tags via @celo/attribution-tags", () => {
-    const code = deriveRepoAttributionCode(CAPRAIL_REPO_SLUG);
-    expect(code).toBe(CAPRAIL_DEFAULT_ATTRIBUTION_CODE);
-    const tagged = appendAttributionTag("0xa9059cbb00000001", code);
+    expect(CAPRAIL_DEFAULT_ATTRIBUTION_CODE).toBe("celo_0518175d3efe");
+    const derived = deriveRepoAttributionCode(CAPRAIL_REPO_SLUG);
+    expect(derived.startsWith("celo_")).toBe(true);
+    const tagged = appendAttributionTag("0xa9059cbb00000001", CAPRAIL_DEFAULT_ATTRIBUTION_CODE);
     const decoded = decodeAttributionTag(tagged);
     expect(decoded).not.toBeNull();
-    expect(decoded?.codes).toContain(code);
+    expect(decoded?.codes).toContain("celo_0518175d3efe");
   });
 
   it("initializes @altananetwork/sdk client for Celo Mainnet (42220) and maps SessionPermissions", () => {
@@ -364,7 +365,7 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(isAddress(CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02)).toBe(true);
   });
 
-  it("encodes ERC-20 transfer calldata with valid selector 0xa9059cbb and decodable celo_cbf00f366dda tag", () => {
+  it("encodes ERC-20 transfer calldata with valid selector 0xa9059cbb and decodable celo_0518175d3efe tag", () => {
     const built = encodeAttributedErc20Transfer({
       token: CELO_MAINNET_TOKENS.USDC,
       recipient: RECIPIENT_B,
@@ -374,7 +375,7 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(built.to).toBe(CELO_MAINNET_TOKENS.USDC);
     expect(built.selector).toBe(ERC20_TRANSFER_SELECTOR);
     expect(built.data.startsWith(ERC20_TRANSFER_SELECTOR)).toBe(true);
-    expect(built.attributionCode).toBe("celo_cbf00f366dda");
+    expect(built.attributionCode).toBe("celo_0518175d3efe");
 
     // Verify raw ABI arguments decode cleanly
     const decodedCall = decodeFunctionData({
@@ -387,14 +388,14 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     // Verify ERC-8021 suffix decodes via @celo/attribution-tags fromDataSuffix
     const decodedTag = decodeAttributionTag(built.data);
     expect(decodedTag).not.toBeNull();
-    expect(decodedTag?.codes).toContain("celo_cbf00f366dda");
+    expect(decodedTag?.codes).toContain("celo_0518175d3efe");
 
     // Verify idempotency: re-applying appendAttributionTag does not duplicate suffix
-    const reTagged = appendAttributionTag(built.data, "celo_cbf00f366dda");
+    const reTagged = appendAttributionTag(built.data, "celo_0518175d3efe");
     expect(reTagged).toBe(built.data);
   });
 
-  it("encodes Uniswap V3 SwapRouter02 exactInputSingle calldata with selector 0x04e45aaf and celo_cbf00f366dda tag", () => {
+  it("encodes Uniswap V3 SwapRouter02 exactInputSingle calldata with selector 0x04e45aaf and celo_0518175d3efe tag", () => {
     const built = encodeAttributedUniswapV3Swap({
       tokenIn: CELO_MAINNET_TOKENS.USDC,
       tokenOut: CELO_MAINNET_TOKENS.CELO,
@@ -407,7 +408,7 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(built.to).toBe(CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02);
     expect(built.selector).toBe(UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR);
     expect(built.data.startsWith(UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR)).toBe(true);
-    expect(built.attributionCode).toBe("celo_cbf00f366dda");
+    expect(built.attributionCode).toBe("celo_0518175d3efe");
 
     const decodedCall = decodeFunctionData({
       abi: UNISWAP_V3_SWAP_ROUTER_02_ABI,
@@ -426,7 +427,7 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
 
     const decodedTag = decodeAttributionTag(built.data);
     expect(decodedTag).not.toBeNull();
-    expect(decodedTag?.codes).toContain("celo_cbf00f366dda");
+    expect(decodedTag?.codes).toContain("celo_0518175d3efe");
   });
 
   it("rejects zero amounts or identical tokenIn/tokenOut in calldata builders", () => {

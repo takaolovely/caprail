@@ -15,6 +15,7 @@ export interface MainnetProofTx {
 
 export const CELO_CHAIN_ID = 42220;
 export const CAPRAIL_GITHUB_URL = "https://github.com/takaolovely/caprail" as const;
+export const CAPRAIL_AGENT_WALLET = "0x3631D44543384253C099f2A09c0D0bE109Eb7944" as const;
 export const ALTANA_CELO_KEYSTORE = "0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c" as const;
 export const CELO_ERC8004_REGISTRY = "0x8004A169FB4a3325136EB29fA0ceB6D2e539a432" as const;
 
@@ -34,7 +35,8 @@ export const VERIFIED_MAINNET_PROOFS: readonly MainnetProofTx[] = [
     id: "split",
     step: "02",
     title: "Attributed Revenue Split",
-    detail: "0.05 USDC live payout · ERC-8021 tag celo_cbf00f366dda verified",
+    detail:
+      "0.05 USDC live payout · historical ERC-8021 proof tx on Celo 42220 (runtime upgraded to celo_0518175d3efe)",
     txHash: "0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27",
     celoscanUrl:
       "https://celoscan.io/tx/0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27",
@@ -69,6 +71,7 @@ export const CAPRAIL_AGENT_CARD = agentCardData;
 
 export const CAPRAIL_METADATA = {
   repo: CAPRAIL_REPO_SLUG,
+  agentWallet: CAPRAIL_AGENT_WALLET,
   attributionCode: CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
   usdc: CELO_MAINNET_TOKENS.USDC,
   usdt: CELO_MAINNET_TOKENS.USDT,

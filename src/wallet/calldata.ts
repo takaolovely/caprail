@@ -89,7 +89,7 @@ export interface EncodeErc20TransferInput {
 
 /**
  * Encodes an ERC-20 `transfer(address,uint256)` call for Revenue Splitter payouts
- * and appends + verifies the ERC-8021 Celo attribution suffix (`celo_cbf00f366dda` by default).
+ * and appends + verifies the ERC-8021 Celo attribution suffix (`celo_0518175d3efe` by default).
  */
 export function encodeAttributedErc20Transfer(
   input: EncodeErc20TransferInput,

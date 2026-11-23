@@ -137,7 +137,7 @@ export function JudgeConsolePage({
       id: "mainnet-proof",
       num: "03",
       title: "Inspect ERC-8021 & Mainnet",
-      desc: "Verify celo_cbf00f366dda calldata & 3 live Celoscan receipts.",
+      desc: "Verify celo_0518175d3efe calldata & 3 live Celoscan receipts.",
       done: true,
     },
     {
