@@ -4,7 +4,7 @@
 
 # CapRail — Guardrailed Auto-DCA & Revenue Splitter (Altana Agent Wallet)
 
-**Live Demo:** https://caprail.vercel.app · **Launch App:** https://caprail.vercel.app/#app · **Judge & Proof Console:** https://caprail.vercel.app/#verify  
+**Live Demo:** https://caprail.vercel.app ·   **Judge & Proof Console:** https://caprail.vercel.app/#verify  
 **Repository:** `https://github.com/takaolovely/caprail`  
 **Target Network:** Celo Mainnet (`Chain ID 42220`)  
 **ERC-8021 Builder Attribution Tag:** `celo_cbf00f366dda` (derived deterministically from `takaolovely/caprail` via `@celo/attribution-tags`)  
