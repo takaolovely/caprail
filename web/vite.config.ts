@@ -13,7 +13,7 @@ export default defineConfig({
     alias: {
       "@caprail": rootSrc,
     },
-    dedupe: ["viem", "zod", "@celo/attribution-tags"],
+    dedupe: ["viem", "zod", "@celo/attribution-tags", "@altananetwork/sdk"],
   },
   server: {
     fs: {
