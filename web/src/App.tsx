@@ -5,6 +5,8 @@ import type { Address } from "viem";
 import {
   CELO_MAINNET_ROUTERS,
   CELO_MAINNET_TOKENS,
+  computeMinAmountOut,
+  DEFAULT_MAX_SLIPPAGE_BPS,
   encodeAttributedErc20Transfer,
   encodeAttributedUniswapV3Swap,
 } from "@caprail/wallet/calldata.js";
@@ -23,6 +25,7 @@ import {
   ensureUsdcBalanceAndAllowanceForSwap,
   formatWalletError,
   InsufficientUsdcBalanceError,
+  quoteUniswapV3ExactInputSingle,
   sendLiveAttributedTx,
   type LiveWalletState,
 } from "./lib/liveWallet.js";
@@ -328,13 +331,19 @@ export function App() {
     setDcaAmountUsdc(amountUsdc);
     try {
       const amountUnits = usdcNumberToBaseUnits(amountUsdc);
+      // Indicative sandbox CELO quote (~$0.72/CELO) with 1.00% (100 bps) slippage guard
+      const indicativeCeloQuoteWei = (amountUnits * 10n ** 18n) / 720_000n;
+      const sandboxAmountOutMin = computeMinAmountOut(
+        indicativeCeloQuoteWei,
+        DEFAULT_MAX_SLIPPAGE_BPS,
+      );
       const swapCall = encodeAttributedUniswapV3Swap({
         tokenIn: CELO_MAINNET_TOKENS.USDC,
         tokenOut: CELO_MAINNET_TOKENS.CELO,
         fee: 3000,
         recipient: activeWalletAddress,
         amountIn: amountUnits,
-        amountOutMin: 1n,
+        amountOutMinimum: sandboxAmountOutMin,
         router: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
         attributionCode: CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
       });
@@ -362,10 +371,30 @@ export function App() {
             amountIn: amountUnits,
             attributionCode: CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
           });
+          const liveQuote = await quoteUniswapV3ExactInputSingle({
+            account: liveWallet.address,
+            tokenIn: CELO_MAINNET_TOKENS.USDC,
+            tokenOut: CELO_MAINNET_TOKENS.CELO,
+            fee: 3000,
+            recipient: liveWallet.address,
+            amountIn: amountUnits,
+            maxSlippageBps: DEFAULT_MAX_SLIPPAGE_BPS,
+            router: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+          });
+          const liveSwapCall = encodeAttributedUniswapV3Swap({
+            tokenIn: CELO_MAINNET_TOKENS.USDC,
+            tokenOut: CELO_MAINNET_TOKENS.CELO,
+            fee: 3000,
+            recipient: liveWallet.address,
+            amountIn: amountUnits,
+            amountOutMinimum: liveQuote.amountOutMinimum,
+            router: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+            attributionCode: CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
+          });
           const liveHash = await sendLiveAttributedTx({
             account: liveWallet.address,
-            to: swapCall.to,
-            data: swapCall.data,
+            to: liveSwapCall.to,
+            data: liveSwapCall.data,
             value: 0n,
           });
           const liveResult: WalletExecutionResult = {
@@ -376,12 +405,12 @@ export function App() {
           recordAuditAndVerdict(liveResult, {
             engine: "AUTO_DCA",
             action: label,
-            targets: [swapCall.to],
+            targets: [liveSwapCall.to],
             amountUnits,
             surface,
             summary: prep.approvalTxHash
-              ? `Live Celo Mainnet Auto-DCA broadcast (${formatUsdcDisplay(amountUnits)} USDC → CELO · USDC approval confirmed).`
-              : `Live Celo Mainnet Auto-DCA broadcast (${formatUsdcDisplay(amountUnits)} USDC → CELO).`,
+              ? `Live Celo Mainnet Auto-DCA broadcast (${formatUsdcDisplay(amountUnits)} USDC → CELO · 1.00% slippage guard · USDC approval confirmed).`
+              : `Live Celo Mainnet Auto-DCA broadcast (${formatUsdcDisplay(amountUnits)} USDC → CELO · 1.00% slippage guard).`,
           });
           return liveResult;
         } catch (err) {

@@ -14,7 +14,15 @@ import {
   appendAttributionTag,
   CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
 } from "@caprail/wallet/attribution.js";
-import { CELO_MAINNET_TOKENS, ERC20_ABI } from "@caprail/wallet/calldata.js";
+import {
+  CELO_MAINNET_ROUTERS,
+  CELO_MAINNET_TOKENS,
+  computeMinAmountOut,
+  DEFAULT_MAX_SLIPPAGE_BPS,
+  ERC20_ABI,
+  UNISWAP_V3_SWAP_ROUTER_02_ABI,
+  type UniswapV3FeeTier,
+} from "@caprail/wallet/calldata.js";
 
 const ERC20_ALLOWANCE_APPROVE_ABI = parseAbi([
   "function balanceOf(address account) external view returns (uint256)",
@@ -291,6 +299,62 @@ export async function ensureUsdcBalanceAndAllowanceForSwap(opts: {
   return {
     balance,
     allowanceBefore: allowance,
+  };
+}
+
+/**
+ * Simulates Uniswap V3 SwapRouter02 `exactInputSingle` on-chain via `simulateContract`
+ * (with `amountOutMinimum: 0n` and `account: userAddress`) to obtain a live `quotedAmountOut`,
+ * then computes `amountOutMinimum = (quotedAmountOut * BigInt(10_000 - maxSlippageBps)) / 10_000n`.
+ * Must be called after `ensureUsdcBalanceAndAllowanceForSwap` so transferFrom succeeds in simulation.
+ */
+export async function quoteUniswapV3ExactInputSingle(opts: {
+  account: Address;
+  tokenIn: Address;
+  tokenOut: Address;
+  fee: UniswapV3FeeTier;
+  recipient: Address;
+  amountIn: bigint;
+  maxSlippageBps?: number;
+  router?: Address;
+}): Promise<{
+  quotedAmountOut: bigint;
+  amountOutMinimum: bigint;
+  maxSlippageBps: number;
+}> {
+  const maxSlippageBps = opts.maxSlippageBps ?? DEFAULT_MAX_SLIPPAGE_BPS;
+  const router = opts.router ?? CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02;
+  const publicClient = getPublicCeloClient();
+
+  const { result: quotedAmountOut } = await publicClient.simulateContract({
+    address: router,
+    abi: UNISWAP_V3_SWAP_ROUTER_02_ABI,
+    functionName: "exactInputSingle",
+    account: opts.account,
+    args: [
+      {
+        tokenIn: opts.tokenIn,
+        tokenOut: opts.tokenOut,
+        fee: opts.fee,
+        recipient: opts.recipient,
+        amountIn: opts.amountIn,
+        amountOutMinimum: 0n,
+        sqrtPriceLimitX96: 0n,
+      },
+    ],
+  });
+
+  if (quotedAmountOut <= 0n) {
+    throw new Error(
+      "Uniswap V3 simulation returned 0 output amount. Pool liquidity may be insufficient.",
+    );
+  }
+
+  const amountOutMinimum = computeMinAmountOut(quotedAmountOut, maxSlippageBps);
+  return {
+    quotedAmountOut,
+    amountOutMinimum,
+    maxSlippageBps,
   };
 }
 

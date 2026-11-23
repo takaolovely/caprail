@@ -14,6 +14,8 @@ import {
 import {
   CELO_MAINNET_ROUTERS,
   CELO_MAINNET_TOKENS,
+  computeMinAmountOut,
+  DEFAULT_MAX_SLIPPAGE_BPS,
   encodeAttributedErc20Transfer,
   encodeAttributedUniswapV3Swap,
   type AttributedCalldataResult,
@@ -112,13 +114,19 @@ export function buildCalldataPreview(opts: {
   const amountUnits = usdcNumberToBaseUnits(safeAmount);
 
   if (opts.mode === "AUTO_DCA") {
+    // Indicative sandbox CELO quote (~$0.72/CELO) with 1.00% (100 bps) slippage guard
+    const indicativeCeloQuoteWei = (amountUnits * 10n ** 18n) / 720_000n;
+    const amountOutMinimum = computeMinAmountOut(
+      indicativeCeloQuoteWei,
+      DEFAULT_MAX_SLIPPAGE_BPS,
+    );
     const built: AttributedCalldataResult = encodeAttributedUniswapV3Swap({
       tokenIn: opts.tokenOverride ?? CELO_MAINNET_TOKENS.USDC,
       tokenOut: CELO_MAINNET_TOKENS.CELO,
       fee: 3000,
       recipient: opts.walletAddress,
       amountIn: amountUnits,
-      amountOutMin: 1n,
+      amountOutMinimum,
       router: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
       attributionCode: CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
     });

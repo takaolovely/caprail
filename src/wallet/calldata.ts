@@ -49,8 +49,32 @@ export const ERC20_ABI = parseAbi([
  * from ExactInputSingleParams, producing selector 0x04e45aaf).
  */
 export const UNISWAP_V3_SWAP_ROUTER_02_ABI = parseAbi([
-  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMin, uint160 sqrtPriceLimitX96) params) external payable returns (uint256 amountOut)",
+  "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) external payable returns (uint256 amountOut)",
 ]);
+
+export const DEFAULT_MAX_SLIPPAGE_BPS = 100;
+const BPS_DENOMINATOR = 10_000n;
+
+/**
+ * Computes `amountOutMinimum` from an on-chain/indicative `quotedAmountOut` and
+ * policy `maxSlippageBps` (default 100 bps = 1.00%).
+ */
+export function computeMinAmountOut(
+  quotedAmountOut: bigint,
+  maxSlippageBps: number = DEFAULT_MAX_SLIPPAGE_BPS,
+): bigint {
+  if (quotedAmountOut < 0n) {
+    throw new Error("quotedAmountOut must be non-negative");
+  }
+  if (
+    !Number.isInteger(maxSlippageBps) ||
+    maxSlippageBps < 0 ||
+    maxSlippageBps > 10_000
+  ) {
+    throw new Error("maxSlippageBps must be an integer between 0 and 10000");
+  }
+  return (quotedAmountOut * BigInt(10_000 - maxSlippageBps)) / BPS_DENOMINATOR;
+}
 
 export type UniswapV3FeeTier = 100 | 500 | 3000 | 10000;
 
@@ -130,7 +154,12 @@ export interface EncodeUniswapV3SwapInput {
   fee: UniswapV3FeeTier;
   recipient: Address;
   amountIn: bigint;
-  amountOutMin: bigint;
+  /** Explicit minimum output amount (takes precedence over quotedAmountOut). */
+  amountOutMinimum?: bigint | undefined;
+  /** Quoted output amount used to derive amountOutMinimum via maxSlippageBps when amountOutMinimum is omitted. */
+  quotedAmountOut?: bigint | undefined;
+  /** Maximum allowed slippage in basis points (default: 100 bps = 1.00%). */
+  maxSlippageBps?: number | undefined;
   sqrtPriceLimitX96?: bigint | undefined;
   router?: Address | undefined;
   attributionCode?: string | undefined;
@@ -138,7 +167,8 @@ export interface EncodeUniswapV3SwapInput {
 
 /**
  * Encodes a Uniswap V3 SwapRouter02 `exactInputSingle` swap for Auto-DCA execution
- * on Celo Mainnet and appends + verifies the ERC-8021 Celo attribution suffix.
+ * on Celo Mainnet with explicit or quote-derived slippage protection (`amountOutMinimum`),
+ * and appends + verifies the ERC-8021 Celo attribution suffix (`celo_0518175d3efe` by default).
  */
 export function encodeAttributedUniswapV3Swap(
   input: EncodeUniswapV3SwapInput,
@@ -146,8 +176,23 @@ export function encodeAttributedUniswapV3Swap(
   if (input.amountIn <= 0n) {
     throw new Error("Swap amountIn must be strictly greater than 0");
   }
-  if (input.amountOutMin < 0n) {
-    throw new Error("Swap amountOutMin must be non-negative");
+
+  let resolvedAmountOutMinimum: bigint;
+  if (input.amountOutMinimum !== undefined) {
+    resolvedAmountOutMinimum = input.amountOutMinimum;
+  } else if (input.quotedAmountOut !== undefined) {
+    resolvedAmountOutMinimum = computeMinAmountOut(
+      input.quotedAmountOut,
+      input.maxSlippageBps ?? DEFAULT_MAX_SLIPPAGE_BPS,
+    );
+  } else {
+    throw new Error(
+      "Swap requires explicit amountOutMinimum or quotedAmountOut for slippage protection",
+    );
+  }
+
+  if (resolvedAmountOutMinimum < 0n) {
+    throw new Error("Swap amountOutMinimum must be non-negative");
   }
 
   const tokenIn = getAddress(input.tokenIn);
@@ -173,7 +218,7 @@ export function encodeAttributedUniswapV3Swap(
         fee: input.fee,
         recipient,
         amountIn: input.amountIn,
-        amountOutMin: input.amountOutMin,
+        amountOutMinimum: resolvedAmountOutMinimum,
         sqrtPriceLimitX96: input.sqrtPriceLimitX96 ?? 0n,
       },
     ],
@@ -193,3 +238,5 @@ export function encodeAttributedUniswapV3Swap(
     decodedAttribution,
   };
 }
+
+export const buildExactInputSingleCalldata = encodeAttributedUniswapV3Swap;

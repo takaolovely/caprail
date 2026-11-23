@@ -25,10 +25,12 @@ import {
 import {
   appendAttributionTag,
   buildAltanaSessionPermissions,
+  buildExactInputSingleCalldata,
   CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
   CAPRAIL_REPO_SLUG,
   CELO_MAINNET_ROUTERS,
   CELO_MAINNET_TOKENS,
+  computeMinAmountOut,
   createReadOnlyAltanaCeloClient,
   decodeAttributionTag,
   deriveRepoAttributionCode,
@@ -395,14 +397,19 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(reTagged).toBe(built.data);
   });
 
-  it("encodes Uniswap V3 SwapRouter02 exactInputSingle calldata with selector 0x04e45aaf and celo_0518175d3efe tag", () => {
-    const built = encodeAttributedUniswapV3Swap({
+  it("encodes Uniswap V3 SwapRouter02 exactInputSingle calldata with selector 0x04e45aaf, slippage amountOutMinimum, and celo_0518175d3efe tag", () => {
+    const quotedAmountOut = 100_000_000_000_000_000n; // 0.1 CELO quote
+    const expectedMinOut = computeMinAmountOut(quotedAmountOut, 100); // 1.00% slippage
+    expect(expectedMinOut).toBe(99_000_000_000_000_000n);
+
+    const built = buildExactInputSingleCalldata({
       tokenIn: CELO_MAINNET_TOKENS.USDC,
       tokenOut: CELO_MAINNET_TOKENS.CELO,
       fee: 3000,
       recipient: WALLET,
       amountIn: 100_000n,
-      amountOutMin: 1n,
+      quotedAmountOut,
+      maxSlippageBps: 100,
     });
 
     expect(built.to).toBe(CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02);
@@ -421,16 +428,31 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
       fee: 3000,
       recipient: WALLET,
       amountIn: 100_000n,
-      amountOutMin: 1n,
+      amountOutMinimum: expectedMinOut,
       sqrtPriceLimitX96: 0n,
     });
+
+    // Explicit amountOutMinimum overrides quote calculation
+    const explicit = encodeAttributedUniswapV3Swap({
+      tokenIn: CELO_MAINNET_TOKENS.USDC,
+      tokenOut: CELO_MAINNET_TOKENS.CELO,
+      fee: 3000,
+      recipient: WALLET,
+      amountIn: 100_000n,
+      amountOutMinimum: 98_500_000_000_000_000n,
+    });
+    const decodedExplicit = decodeFunctionData({
+      abi: UNISWAP_V3_SWAP_ROUTER_02_ABI,
+      data: explicit.rawData,
+    });
+    expect(decodedExplicit.args[0].amountOutMinimum).toBe(98_500_000_000_000_000n);
 
     const decodedTag = decodeAttributionTag(built.data);
     expect(decodedTag).not.toBeNull();
     expect(decodedTag?.codes).toContain("celo_0518175d3efe");
   });
 
-  it("rejects zero amounts or identical tokenIn/tokenOut in calldata builders", () => {
+  it("rejects zero amounts, missing slippage floor, or identical tokenIn/tokenOut in calldata builders", () => {
     expect(() =>
       encodeAttributedErc20Transfer({
         token: CELO_MAINNET_TOKENS.USDC,
@@ -446,7 +468,17 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
         fee: 500,
         recipient: WALLET,
         amountIn: 10_000n,
-        amountOutMin: 0n,
+        amountOutMinimum: 9_900n,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      encodeAttributedUniswapV3Swap({
+        tokenIn: CELO_MAINNET_TOKENS.USDC,
+        tokenOut: CELO_MAINNET_TOKENS.CELO,
+        fee: 3000,
+        recipient: WALLET,
+        amountIn: 10_000n,
       }),
     ).toThrow();
   });
