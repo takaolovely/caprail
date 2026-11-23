@@ -36,7 +36,9 @@ import {
   encodeAttributedUniswapV3Swap,
   ERC20_ABI,
   ERC20_TRANSFER_SELECTOR,
+  isInvalidAuthItemNonceError,
   LocalSessionSimulator,
+  resolveOrProvisionAltanaWallet,
   UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR,
   UNISWAP_V3_SWAP_ROUTER_02_ABI,
 } from "../src/wallet/index.js";
@@ -446,5 +448,67 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
         amountOutMin: 0n,
       }),
     ).toThrow();
+  });
+
+  it("reuses upgraded or pinned Altana wallet without re-calling createWallet and detects nonce errors", async () => {
+    expect(
+      isInvalidAuthItemNonceError(
+        new Error("Invalid auth item nonce, expected 2, got 1."),
+      ),
+    ).toBe(true);
+
+    const fakeSigner = {
+      type: "privateKey" as const,
+      address: WALLET,
+      publicKey: "0x04" as `0x${string}`,
+      signDigest: async () => "0x" as `0x${string}`,
+    };
+
+    let createCalls = 0;
+    const fakeClient = {
+      createWallet: async () => {
+        createCalls += 1;
+        return { address: WALLET, signer: fakeSigner };
+      },
+    };
+
+    // Case 1: Bytecode already exists on-chain -> reuses without createWallet()
+    const reusedOnChain = await resolveOrProvisionAltanaWallet({
+      client: fakeClient,
+      adminSigner: fakeSigner,
+      publicClient: { getCode: async () => "0xef01001234" as `0x${string}` },
+    });
+    expect(reusedOnChain.reused).toBe(true);
+    expect(createCalls).toBe(0);
+
+    // Case 2: Pinned ALTANA_WALLET_ADDRESS in .env -> reuses without createWallet()
+    const reusedPinned = await resolveOrProvisionAltanaWallet({
+      client: fakeClient,
+      adminSigner: fakeSigner,
+      publicClient: { getCode: async () => undefined },
+      existingWalletAddress: WALLET,
+    });
+    expect(reusedPinned.reused).toBe(true);
+    expect(createCalls).toBe(0);
+
+    // Case 3: Fresh wallet with transient nonce error -> retries and succeeds
+    let transientAttempt = 0;
+    const retryClient = {
+      createWallet: async () => {
+        transientAttempt += 1;
+        if (transientAttempt === 1) {
+          throw new Error("Invalid auth item nonce, expected 2, got 1");
+        }
+        return { address: WALLET, signer: fakeSigner };
+      },
+    };
+    const provisioned = await resolveOrProvisionAltanaWallet({
+      client: retryClient,
+      adminSigner: fakeSigner,
+      publicClient: { getCode: async () => undefined },
+      retryDelayMs: 1,
+    });
+    expect(provisioned.reused).toBe(false);
+    expect(transientAttempt).toBe(2);
   });
 });

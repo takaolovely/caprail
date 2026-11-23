@@ -13,7 +13,9 @@
     "test": "vitest run",
     "check:network": "tsx src/cli/check-network.ts",
     "dry-run": "tsx src/cli/dry-run.ts",
-    "live:test": "tsx src/cli/live-test.ts"
+    "live:test": "tsx src/cli/live-test.ts",
+    "web:dev": "npm --prefix web run dev",
+    "web:build": "npm --prefix web run build"
   },
   "dependencies": {
     "@altananetwork/sdk": "latest",

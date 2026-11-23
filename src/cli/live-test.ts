@@ -1,20 +1,20 @@
 import {
   CELO,
-  createClient,
   createPrivateKeySigner,
   isAltanaError,
   NATIVE_TOKEN,
   signerFromPrivateKey,
-  type Wallet,
 } from "@altananetwork/sdk";
 import {
   createPublicClient,
+  createWalletClient,
   formatUnits,
   getAddress,
   http,
   type Address,
   type Hex,
 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { celo } from "viem/chains";
 import { loadEnv } from "../config/env.js";
 import type { SessionPolicy } from "../policy/index.js";
@@ -22,12 +22,17 @@ import {
   AltanaLiveAdapter,
   CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
   CELO_MAINNET_TOKENS,
+  createAltanaCeloClient,
   encodeAttributedErc20Transfer,
   ERC20_ABI,
+  grantSessionWithNonceRecovery,
+  resolveOrProvisionAltanaWallet,
 } from "../wallet/index.js";
 
 const MICRO_PER_TX_CAP = 150_000n; // 0.15 USDC (6 decimals)
 const MICRO_TOTAL_CAP = 300_000n; // 0.30 USDC (6 decimals)
+const AUTO_FUND_TARGET_USDC = 350_000n; // 0.35 USDC target balance in Altana Agent Wallet
+const AUTO_FUND_TARGET_CELO = 50_000_000_000_000_000n; // 0.05 CELO gas for distinct Altana Agent Wallet
 const MICRO_PAYOUT_AMOUNT = 50_000n; // 0.05 USDC
 const OVER_PER_TX_AMOUNT = 250_000n; // 0.25 USDC (> 0.15 USDC per-tx cap)
 const OVER_ONCHAIN_TOTAL_AMOUNT = 350_000n; // 0.35 USDC (> 0.30 USDC total spend cap)
@@ -54,6 +59,11 @@ async function main(): Promise<void> {
     env.CELO_ATTRIBUTION_CODE ?? CAPRAIL_DEFAULT_ATTRIBUTION_CODE;
   const ownerPrivateKey = (env.OWNER_PRIVATE_KEY ??
     env.ALTANA_ADMIN_PRIVATE_KEY) as Hex | undefined;
+  const adminPrivateKey = (env.ALTANA_ADMIN_PRIVATE_KEY ??
+    env.OWNER_PRIVATE_KEY) as Hex | undefined;
+  const pinnedWalletAddress = env.ALTANA_WALLET_ADDRESS
+    ? getAddress(env.ALTANA_WALLET_ADDRESS)
+    : undefined;
   const recipientAddress = env.TEST_RECIPIENT_ADDRESS
     ? getAddress(env.TEST_RECIPIENT_ADDRESS)
     : undefined;
@@ -61,6 +71,10 @@ async function main(): Promise<void> {
   const derivedOwnerAddress: Address | undefined =
     ownerPrivateKey !== undefined
       ? signerFromPrivateKey(ownerPrivateKey).address
+      : undefined;
+  const derivedAdminAddress: Address | undefined =
+    adminPrivateKey !== undefined
+      ? signerFromPrivateKey(adminPrivateKey).address
       : undefined;
 
   console.log("====================================================================");
@@ -70,12 +84,16 @@ async function main(): Promise<void> {
     `Mode               : ${confirmedMainnet ? "CELO_MAINNET (LIVE EXECUTION)" : "PREVIEW ONLY (no --confirm-mainnet flag)"}`,
   );
   console.log(`RPC URL            : ${env.CELO_RPC_URL}`);
-  console.log(`Owner Wallet       : ${derivedOwnerAddress ?? "(OWNER_PRIVATE_KEY not set)"}`);
+  console.log(`Owner EOA          : ${derivedOwnerAddress ?? "(OWNER_PRIVATE_KEY not set)"}`);
+  console.log(
+    `Altana Admin EOA   : ${derivedAdminAddress ?? "(same as Owner)"}${pinnedWalletAddress ? ` (pinned ALTANA_WALLET_ADDRESS=${pinnedWalletAddress})` : ""}`,
+  );
   console.log(`Test Recipient     : ${recipientAddress ?? "(TEST_RECIPIENT_ADDRESS not set)"}`);
   console.log(`Token (USDC)       : ${CELO_MAINNET_TOKENS.USDC}`);
   console.log(`Allowed Targets    : [${CELO_MAINNET_TOKENS.USDC}]`);
   console.log(`Spend Cap / Tx     : ${formatUsdc(MICRO_PER_TX_CAP)} (${MICRO_PER_TX_CAP.toString()})`);
   console.log(`Total Spend Cap    : ${formatUsdc(MICRO_TOTAL_CAP)} (${MICRO_TOTAL_CAP.toString()})`);
+  console.log(`Auto-Fund Target   : ${formatUsdc(AUTO_FUND_TARGET_USDC)} (${AUTO_FUND_TARGET_USDC.toString()})`);
   console.log(`Session TTL        : ${SESSION_TTL_SECONDS}s (1 hour)`);
   console.log(`Micro Split Payout : ${formatUsdc(MICRO_PAYOUT_AMOUNT)} -> recipient`);
   console.log(`ERC-8021 Tag       : ${attributionCode}`);
@@ -93,7 +111,7 @@ async function main(): Promise<void> {
   }
 
   // --- Strict pre-execution validation for live Celo Mainnet ---
-  if (ownerPrivateKey === undefined) {
+  if (ownerPrivateKey === undefined || adminPrivateKey === undefined) {
     throw new Error(
       "Missing OWNER_PRIVATE_KEY (or ALTANA_ADMIN_PRIVATE_KEY) in local .env or environment",
     );
@@ -104,7 +122,8 @@ async function main(): Promise<void> {
     );
   }
 
-  const ownerSigner = signerFromPrivateKey(ownerPrivateKey);
+  const ownerAccount = privateKeyToAccount(ownerPrivateKey);
+  const adminSigner = signerFromPrivateKey(adminPrivateKey);
   const publicClient = createPublicClient({
     chain: celo,
     transport: http(env.CELO_RPC_URL),
@@ -112,14 +131,14 @@ async function main(): Promise<void> {
 
   // 1) Check Celo Mainnet chain ID + owner balances
   console.log("[Step 1/5] Checking Celo Mainnet chainId & owner balances...");
-  const [chainId, celoBalance, usdcBalance] = await Promise.all([
+  const [chainId, ownerCeloBalance, ownerUsdcBalance] = await Promise.all([
     publicClient.getChainId(),
-    publicClient.getBalance({ address: ownerSigner.address }),
+    publicClient.getBalance({ address: ownerAccount.address }),
     publicClient.readContract({
       address: CELO_MAINNET_TOKENS.USDC,
       abi: ERC20_ABI,
       functionName: "balanceOf",
-      args: [ownerSigner.address],
+      args: [ownerAccount.address],
     }),
   ]);
 
@@ -129,39 +148,133 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(`  Owner Address : ${ownerSigner.address}`);
-  console.log(`  CELO Balance  : ${formatCelo(celoBalance)}`);
-  console.log(`  USDC Balance  : ${formatUsdc(usdcBalance)}`);
+  console.log(`  Owner Address : ${ownerAccount.address}`);
+  console.log(`  CELO Balance  : ${formatCelo(ownerCeloBalance)}`);
+  console.log(`  USDC Balance  : ${formatUsdc(ownerUsdcBalance)}`);
 
-  if (usdcBalance < MICRO_TOTAL_CAP) {
+  if (ownerUsdcBalance < MICRO_TOTAL_CAP) {
     throw new Error(
-      `Insufficient USDC balance: have ${formatUsdc(usdcBalance)}, require at least ${formatUsdc(MICRO_TOTAL_CAP)}`,
+      `Insufficient owner USDC balance: have ${formatUsdc(ownerUsdcBalance)}, require at least ${formatUsdc(MICRO_TOTAL_CAP)}`,
     );
   }
-  if (celoBalance === 0n) {
+  if (ownerCeloBalance === 0n) {
     throw new Error(
       "Insufficient native CELO balance (0 CELO): Altana KeyStore registration on Celo Mainnet requires native CELO for registration/gas.",
     );
   }
-  if (recipientAddress.toLowerCase() === ownerSigner.address.toLowerCase()) {
+  if (recipientAddress.toLowerCase() === ownerAccount.address.toLowerCase()) {
     console.warn(
       "  [WARN] TEST_RECIPIENT_ADDRESS matches OWNER address (fine for smoke test, but final hackathon demo requires a named external collaborator).",
     );
   }
 
-  // 2) Provision Altana Agent Wallet + scoped 1-hour Session Key
-  console.log("\n[Step 2/5] Creating Altana Agent Wallet & granting scoped session key...");
-  const client = createClient({
-    chains: [CELO],
-    defaultChainId: CELO.chainId,
-  });
+  // 2) Resolve / reuse existing Altana wallet (or provision once) + auto-fund USDC if distinct address
+  console.log("\n[Step 2/5] Resolving Altana Agent Wallet, verifying funding & granting scoped session key...");
+  const client = createAltanaCeloClient();
 
-  const createdWallet = await client.createWallet({ signer: ownerSigner });
-  const wallet: Wallet = { address: createdWallet.address };
+  const resolved = await resolveOrProvisionAltanaWallet({
+    client,
+    adminSigner,
+    publicClient,
+    existingWalletAddress: pinnedWalletAddress,
+  });
+  const wallet = resolved.wallet;
+
+  console.log(`  Wallet Address : ${wallet.address}`);
+  console.log(`  Wallet Status  : ${resolved.reused ? "REUSED" : "NEWLY PROVISIONED"} (${resolved.reason})`);
+  if (pinnedWalletAddress === undefined) {
+    console.log(`  Tip            : Save ALTANA_WALLET_ADDRESS=${wallet.address} in .env to reuse across runs.`);
+  }
+
+  // Check USDC balance at wallet.address; auto-fund 0.35 USDC from ownerAccount when wallet is distinct
+  const [walletCeloBalance, walletUsdcBalance] = await Promise.all([
+    publicClient.getBalance({ address: wallet.address }),
+    publicClient.readContract({
+      address: CELO_MAINNET_TOKENS.USDC,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [wallet.address],
+    }),
+  ]);
+
+  console.log(`  Wallet CELO    : ${formatCelo(walletCeloBalance)}`);
+  console.log(`  Wallet USDC    : ${formatUsdc(walletUsdcBalance)}`);
+
+  if (walletUsdcBalance < AUTO_FUND_TARGET_USDC) {
+    if (wallet.address.toLowerCase() === ownerAccount.address.toLowerCase()) {
+      console.log(
+        `  [FUND CHECK] Wallet is owner's EIP-7702 EOA (${formatUsdc(walletUsdcBalance)} >= ${formatUsdc(MICRO_TOTAL_CAP)}); skipping self-transfer so EOA nonce is not bumped.`,
+      );
+    } else {
+      if (ownerUsdcBalance < AUTO_FUND_TARGET_USDC) {
+        throw new Error(
+          `Insufficient owner USDC to auto-fund Altana wallet: have ${formatUsdc(ownerUsdcBalance)}, need ${formatUsdc(AUTO_FUND_TARGET_USDC)}`,
+        );
+      }
+      console.log(
+        `  [AUTO-FUND] Wallet USDC (${formatUsdc(walletUsdcBalance)}) < ${formatUsdc(AUTO_FUND_TARGET_USDC)}. Sending ${formatUsdc(AUTO_FUND_TARGET_USDC)} from ownerAccount -> ${wallet.address}...`,
+      );
+      const ownerWalletClient = createWalletClient({
+        account: ownerAccount,
+        chain: celo,
+        transport: http(env.CELO_RPC_URL),
+      });
+      const fundCall = encodeAttributedErc20Transfer({
+        token: CELO_MAINNET_TOKENS.USDC,
+        recipient: wallet.address,
+        amount: AUTO_FUND_TARGET_USDC,
+        attributionCode,
+      });
+      const fundTxHash = await ownerWalletClient.sendTransaction({
+        to: fundCall.to,
+        data: fundCall.data,
+        value: 0n,
+      });
+      const fundReceipt = await publicClient.waitForTransactionReceipt({
+        hash: fundTxHash,
+      });
+      if (fundReceipt.status !== "success") {
+        throw new Error(`Auto-fund USDC transaction reverted: ${fundTxHash}`);
+      }
+      console.log(`  [AUTO-FUND] Confirmed in block ${fundReceipt.blockNumber.toString()}: ${celoscanTxUrl(fundTxHash)}`);
+    }
+  }
+
+  // If using a distinct Altana wallet address that has < 0.05 CELO, top up micro gas from ownerAccount
+  if (
+    wallet.address.toLowerCase() !== ownerAccount.address.toLowerCase() &&
+    walletCeloBalance < AUTO_FUND_TARGET_CELO
+  ) {
+    if (ownerCeloBalance <= AUTO_FUND_TARGET_CELO) {
+      throw new Error(
+        `Distinct Altana wallet ${wallet.address} needs CELO for KeyStore gas (${formatCelo(walletCeloBalance)} < ${formatCelo(AUTO_FUND_TARGET_CELO)}), and owner only holds ${formatCelo(ownerCeloBalance)}.`,
+      );
+    }
+    console.log(
+      `  [AUTO-FUND] Wallet CELO (${formatCelo(walletCeloBalance)}) < ${formatCelo(AUTO_FUND_TARGET_CELO)}. Sending ${formatCelo(AUTO_FUND_TARGET_CELO)} from ownerAccount -> ${wallet.address}...`,
+    );
+    const ownerWalletClient = createWalletClient({
+      account: ownerAccount,
+      chain: celo,
+      transport: http(env.CELO_RPC_URL),
+    });
+    const gasTxHash = await ownerWalletClient.sendTransaction({
+      to: wallet.address,
+      value: AUTO_FUND_TARGET_CELO,
+    });
+    const gasReceipt = await publicClient.waitForTransactionReceipt({
+      hash: gasTxHash,
+    });
+    if (gasReceipt.status !== "success") {
+      throw new Error(`Auto-fund CELO transaction reverted: ${gasTxHash}`);
+    }
+    console.log(`  [AUTO-FUND] CELO confirmed in block ${gasReceipt.blockNumber.toString()}: ${celoscanTxUrl(gasTxHash)}`);
+  }
+
   const nowSec = Math.floor(Date.now() / 1000);
   const expiresAt = nowSec + SESSION_TTL_SECONDS;
-
   const sessionSigner = createPrivateKeySigner();
+
   const policy: SessionPolicy = {
     sessionId: `caprail-live-${nowSec}`,
     spendCapPerTx: MICRO_PER_TX_CAP,
@@ -174,10 +287,10 @@ async function main(): Promise<void> {
 
   const feeTokens = [NATIVE_TOKEN, CELO_MAINNET_TOKENS.USDC] as const;
 
-  const grantResult = await client.grantSession({
+  const grantResult = await grantSessionWithNonceRecovery({
+    client,
     wallet,
-    signer: ownerSigner,
-    chainId: CELO.chainId,
+    adminSigner,
     sessionSigner,
     expiry: expiresAt,
     feeToken: feeTokens,
@@ -204,7 +317,6 @@ async function main(): Promise<void> {
     );
   }
 
-  console.log(`  Wallet Address : ${wallet.address}`);
   console.log(`  Session keyId  : ${grantResult.keyId}`);
   console.log(`  Session keyHash: ${grantResult.keyHash}`);
   console.log(`  Grant TxHash   : ${grantResult.transactionHash ?? "(bundled)"}`);
@@ -215,7 +327,7 @@ async function main(): Promise<void> {
     wallet,
     policy,
     session: grantResult,
-    adminSigner: ownerSigner,
+    adminSigner,
     feeToken: feeTokens,
     attributionCode,
   });

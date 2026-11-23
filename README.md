@@ -1,3 +1,7 @@
+<p align="left">
+  <img src="./assets/logo.png" alt="CapRail logo" width="56" height="56" />
+</p>
+
 # CapRail — Guardrailed Auto-DCA & Revenue Splitter (Altana Agent Wallet)
 
 **Repository:** `https://github.com/takaolovely/caprail`  
@@ -10,6 +14,17 @@
 > **Honesty Boundary (`LOCAL_SIMULATION` vs. `CELO_MAINNET`):**
 > * `npm run dry-run` and `npm test` execute against `LocalSessionSimulator` (`MODE: LOCAL_SIMULATION`). They deterministically verify policy validation, 10000-bps split math, structured audit logging, and negative-test rejection logic without spending gas or holding keys. **Local simulation results are NOT on-chain smart-contract reverts.**
 > * Live Celo Mainnet (`42220`) enforcement runs through `AltanaLiveAdapter` backed by `@altananetwork/sdk` (`v1.1.0`) non-custodial session keys, Altana's Celo KeyStore (`0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c`), `viem`, and `@celo/attribution-tags` (`v0.5.0`, ERC-8021).
+
+## Verified Celo Mainnet Proof (Chain ID `42220`)
+
+Executed live on **Celo Mainnet (`42220`)** via `npx tsx src/cli/live-test.ts --confirm-mainnet` using `@altananetwork/sdk@1.1.0` EIP-7702 session keys and `@celo/attribution-tags@0.5.0` (`celo_cbf00f366dda`):
+
+| Step | Action | Verification / Celoscan Proof |
+| :--- | :--- | :--- |
+| **1. Session Grant** | Scoped 1h Altana Session Key (`0.15 USDC` per-tx, `0.30 USDC` total, `USDC.transfer` allowlist) | [0x928012be...ae8f954a](https://celoscan.io/tx/0x928012be32adf147c343ab658b26ccef5e4928eafeb48ce2d8849931ae8f954a) |
+| **2. Attributed Split** | Live `0.05 USDC` payout tagged with ERC-8021 `celo_cbf00f366dda` | [0xcb30c996...dbf1c27](https://celoscan.io/tx/0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27) |
+| **3. Negative Tests (On-Chain)** | Direct Altana Relay / KeyStore calls bypassing TS pre-flight: un-allowlisted USD₮ call & `0.35 USDC > 0.30 USDC` over-cap spend | Rejected on-chain by Altana: `[call_not_permitted]` & `[spend_limit_exceeded]` |
+| **4. 1-Tx Emergency Revoke** | Instant KeyStore session key revocation (`revokeSession`) | [0x1455448c...4302d320](https://celoscan.io/tx/0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320) |
 
 ## Verified Installed SDKs
 
@@ -58,6 +73,8 @@ npm run check:network
 npm run dry-run
 npm run live:test               # Safe preview only (zero tx sent)
 npm run live:test -- --confirm-mainnet  # Live Celo Mainnet micro test (requires OWNER_PRIVATE_KEY & TEST_RECIPIENT_ADDRESS in .env)
+npm run web:dev                 # Start CapRail Interactive Web UI (Vite dev server)
+npm run web:build               # Production build of web/ UI
 ```
 
 ## Security

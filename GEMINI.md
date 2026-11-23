@@ -56,3 +56,20 @@ This file is the persistent operating manual for **Antigravity IDE** when buildi
    * Register the agent under **ERC-8004** on Celo Mainnet (`0x8004A169FB4a3325136EB29fA0ceB6D2e539a432`).
    * Confirm **1 real named external collaborator** to receive a real mainnet revenue-split payout / co-operated treasury run (no self-only loops).
    * Record Celo Mainnet demo covering: normal attributed Auto-DCA & Revenue Split tx on Celoscan, contract-level rejection on over-cap / un-allowlisted target, and `1-tx revoke`.
+
+## 5. Anti-Slop Visual & UI Specification — Metrivo × Ondrel System (Permanent Frontend Rules)
+
+* **Forbidden Patterns:** Zero neon black-purple dark-mode templates, zero cheap AI gradients, zero excessive glow effects, zero abstract 3D blobs, and zero marketing-cliche copy.
+* **Color Palette ("Metrivo × Ondrel Financial Infrastructure"):**
+  * Deep Forest Hero: `radial-gradient(120% 90% at 50% 0%, #17483a 0%, #10372a 45%, #0a281e 100%)`
+  * Primary Paper Canvas: `#f2f4ef`; Surface Cards: `#ffffff`; Sage Band: `#e6ece4`
+  * Primary Ink: `#15171c`; Secondary / Two-Tone Muted Ink: `#5d7166`
+  * Hairline Grid & Borders: `1px solid #e3e6eb`
+  * Functional Status Chips Only: Mint Success (`bg #e4f5eb`, `text #21744e`), Alert/Blocked (`bg #ffece9`, `text #a8342a`, `accent #ff6a5c`), Primary Brand Action: Forest Green `#10372a`.
+* **Strict Radius Ladder:** `9999px` (pills/chips/buttons), `8px`–`10px` (small cards/inputs), `16px` (floating nav pill & step cards), `24px` (main app shells & hero stage).
+* **Typography & Numeric Precision:**
+  * UI & Headings: `Inter` (`400`, `500`, `600`) with display `line-height: 1.0`, tight negative tracking (`-0.04em` H1, `-0.03em` H2, `-0.01em` body), Ondrel two-tone headlines (`#15171c` claim + `#5d7166` elaboration).
+  * Financial & On-Chain Data: `JetBrains Mono` with mandatory `tabular-nums` on all USDC amounts, basis points (`bps`), spend caps, calldata hex, and `0x...` addresses.
+* **Eased Choreography & Honesty:**
+  * Primary easing: `cubic-bezier(0.22, 1, 0.36, 1)` + Framer `motion` `layoutId` pill morphing + CSS keyframes (`channel-flow-halo` `2.4s` infinite pulse, `tangleline-wave` `1.2s` alternate wave with `-0.34s` negative stagger, `.chip-blur-in` `0.52s` blur-to-sharp reveal).
+  * Every UI execution must explicitly distinguish `Sandbox (LOCAL_SIMULATION)` from `Live Wallet (CELO_MAINNET)` without ever mislabeling simulation rejections as on-chain reverts.
