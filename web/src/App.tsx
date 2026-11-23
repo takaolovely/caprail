@@ -20,7 +20,9 @@ import { UserAppPage } from "./components/UserAppPage.js";
 import { CAPRAIL_GITHUB_URL } from "./data/mainnetProof.js";
 import {
   connectInjectedCeloWallet,
+  ensureUsdcBalanceAndAllowanceForSwap,
   formatWalletError,
+  InsufficientUsdcBalanceError,
   sendLiveAttributedTx,
   type LiveWalletState,
 } from "./lib/liveWallet.js";
@@ -354,6 +356,12 @@ export function App() {
         liveWallet.address
       ) {
         try {
+          const prep = await ensureUsdcBalanceAndAllowanceForSwap({
+            account: liveWallet.address,
+            spender: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+            amountIn: amountUnits,
+            attributionCode: CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
+          });
           const liveHash = await sendLiveAttributedTx({
             account: liveWallet.address,
             to: swapCall.to,
@@ -371,17 +379,20 @@ export function App() {
             targets: [swapCall.to],
             amountUnits,
             surface,
-            summary: `Live Celo Mainnet Auto-DCA broadcast (${formatUsdcDisplay(amountUnits)} USDC → CELO).`,
+            summary: prep.approvalTxHash
+              ? `Live Celo Mainnet Auto-DCA broadcast (${formatUsdcDisplay(amountUnits)} USDC → CELO · USDC approval confirmed).`
+              : `Live Celo Mainnet Auto-DCA broadcast (${formatUsdcDisplay(amountUnits)} USDC → CELO).`,
           });
           return liveResult;
         } catch (err) {
+          const isInsufficient = err instanceof InsufficientUsdcBalanceError;
           const formatted = formatWalletError(err);
           const blockedLive: WalletExecutionResult = {
             ...simResult,
             mode: "CELO_MAINNET",
             status: "BLOCKED",
             reasonCode: "RELAY_REVERT",
-            reason: formatted.message,
+            reason: isInsufficient ? err.message : formatted.message,
             spentTotal: spentUnits,
             remainingTotalCap: remainingUnits,
           };
@@ -391,7 +402,9 @@ export function App() {
             targets: [swapCall.to],
             amountUnits,
             surface,
-            summary: "Live wallet transaction cancelled or reverted.",
+            summary: isInsufficient
+              ? "Insufficient Native USDC balance"
+              : "Live wallet transaction cancelled or reverted.",
           });
           return blockedLive;
         }

@@ -2,13 +2,41 @@ import {
   createPublicClient,
   createWalletClient,
   custom,
+  encodeFunctionData,
   formatUnits,
   http,
+  parseAbi,
   type Address,
   type Hex,
 } from "viem";
 import { celo } from "viem/chains";
+import {
+  appendAttributionTag,
+  CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
+} from "@caprail/wallet/attribution.js";
 import { CELO_MAINNET_TOKENS, ERC20_ABI } from "@caprail/wallet/calldata.js";
+
+const ERC20_ALLOWANCE_APPROVE_ABI = parseAbi([
+  "function balanceOf(address account) external view returns (uint256)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+  "function approve(address spender, uint256 value) external returns (bool)",
+]);
+
+export class InsufficientUsdcBalanceError extends Error {
+  readonly requiredUnits: bigint;
+  readonly availableUnits: bigint;
+
+  constructor(requiredUnits: bigint, availableUnits: bigint) {
+    const reqStr = Number(formatUnits(requiredUnits, 6)).toFixed(2);
+    const availStr = Number(formatUnits(availableUnits, 6)).toFixed(2);
+    super(
+      `Insufficient Native USDC balance: need $${reqStr} USDC, wallet has $${availStr} USDC.`,
+    );
+    this.name = "InsufficientUsdcBalanceError";
+    this.requiredUnits = requiredUnits;
+    this.availableUnits = availableUnits;
+  }
+}
 
 interface Eip1193Provider {
   request(args: { method: string; params?: unknown[] }): Promise<unknown>;
@@ -181,6 +209,88 @@ export async function connectInjectedCeloWallet(): Promise<LiveWalletState> {
     usdcBalanceRaw: usdcBal,
     error: null,
     isUserRejection: false,
+  };
+}
+
+export async function ensureUsdcBalanceAndAllowanceForSwap(opts: {
+  account: Address;
+  spender: Address;
+  amountIn: bigint;
+  attributionCode?: string;
+}): Promise<{
+  balance: bigint;
+  allowanceBefore: bigint;
+  approvalTxHash?: Hex;
+}> {
+  if (!hasInjectedProvider() || window.ethereum === undefined) {
+    throw new Error("Injected EVM wallet is not available.");
+  }
+
+  const publicClient = getPublicCeloClient();
+  const [balance, allowance] = await Promise.all([
+    publicClient.readContract({
+      address: CELO_MAINNET_TOKENS.USDC,
+      abi: ERC20_ALLOWANCE_APPROVE_ABI,
+      functionName: "balanceOf",
+      args: [opts.account],
+    }),
+    publicClient.readContract({
+      address: CELO_MAINNET_TOKENS.USDC,
+      abi: ERC20_ALLOWANCE_APPROVE_ABI,
+      functionName: "allowance",
+      args: [opts.account, opts.spender],
+    }),
+  ]);
+
+  if (balance < opts.amountIn) {
+    throw new InsufficientUsdcBalanceError(opts.amountIn, balance);
+  }
+
+  if (allowance < opts.amountIn) {
+    const rawApproveData = encodeFunctionData({
+      abi: ERC20_ALLOWANCE_APPROVE_ABI,
+      functionName: "approve",
+      args: [opts.spender, opts.amountIn],
+    });
+    const attributedApproveData = appendAttributionTag(
+      rawApproveData,
+      opts.attributionCode ?? CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
+    );
+
+    const walletClient = createWalletClient({
+      account: opts.account,
+      chain: celo,
+      transport: custom(window.ethereum),
+    });
+
+    const approveHash = await walletClient.sendTransaction({
+      account: opts.account,
+      chain: celo,
+      to: CELO_MAINNET_TOKENS.USDC,
+      data: attributedApproveData,
+      value: 0n,
+    });
+
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash: approveHash,
+    });
+
+    if (receipt.status !== "success") {
+      throw new Error(
+        `Native USDC approval transaction reverted on Celo Mainnet (${approveHash}).`,
+      );
+    }
+
+    return {
+      balance,
+      allowanceBefore: allowance,
+      approvalTxHash: approveHash,
+    };
+  }
+
+  return {
+    balance,
+    allowanceBefore: allowance,
   };
 }
 
