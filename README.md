@@ -30,6 +30,7 @@
 │   ├── wallet/
 │   │   ├── types.ts                   # Uniform AgentWalletAdapter interface
 │   │   ├── attribution.ts             # @celo/attribution-tags (ERC-8021) for takaolovely/caprail (celo_cbf00f366dda)
+│   │   ├── calldata.ts                # Celo Mainnet ERC-20 transfer & Uniswap V3 SwapRouter02 calldata builders + tag verification
 │   │   ├── localSimulator.ts          # LocalSessionSimulator (MODE: LOCAL_SIMULATION)
 │   │   └── altanaLive.ts              # AltanaLiveAdapter (@altananetwork/sdk + Celo Mainnet 42220)
 │   ├── engine/
@@ -41,7 +42,8 @@
 │   │   └── erc8004.ts                 # Celo Mainnet ERC-8004 helper (0x8004A169FB4a3325136EB29fA0ceB6D2e539a432)
 │   └── cli/
 │       ├── check-network.ts           # Read-only Celo Mainnet RPC + Altana SDK probe (zero keys)
-│       └── dry-run.ts                 # End-to-end CLI simulation (positive + negative + revoke)
+│       ├── dry-run.ts                 # End-to-end CLI simulation (positive + negative + revoke)
+│       └── live-test.ts               # Guarded Celo Mainnet micro test runner (requires --confirm-mainnet)
 └── tests/
     └── guardrails.test.ts             # Vitest suite covering policies, guardrails, attribution & ERC-8004
 ```
@@ -54,6 +56,8 @@ npm run typecheck
 npm test
 npm run check:network
 npm run dry-run
+npm run live:test               # Safe preview only (zero tx sent)
+npm run live:test -- --confirm-mainnet  # Live Celo Mainnet micro test (requires OWNER_PRIVATE_KEY & TEST_RECIPIENT_ADDRESS in .env)
 ```
 
 ## Security

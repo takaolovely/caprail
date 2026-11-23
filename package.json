@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "check:network": "tsx src/cli/check-network.ts",
-    "dry-run": "tsx src/cli/dry-run.ts"
+    "dry-run": "tsx src/cli/dry-run.ts",
+    "live:test": "tsx src/cli/live-test.ts"
   },
   "dependencies": {
     "@altananetwork/sdk": "latest",

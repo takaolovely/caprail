@@ -1,5 +1,5 @@
 import { CELO } from "@altananetwork/sdk";
-import type { Address } from "viem";
+import { decodeFunctionData, isAddress, type Address } from "viem";
 import { describe, expect, it } from "vitest";
 import {
   AuditLogger,
@@ -27,10 +27,18 @@ import {
   buildAltanaSessionPermissions,
   CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
   CAPRAIL_REPO_SLUG,
+  CELO_MAINNET_ROUTERS,
+  CELO_MAINNET_TOKENS,
   createReadOnlyAltanaCeloClient,
   decodeAttributionTag,
   deriveRepoAttributionCode,
+  encodeAttributedErc20Transfer,
+  encodeAttributedUniswapV3Swap,
+  ERC20_ABI,
+  ERC20_TRANSFER_SELECTOR,
   LocalSessionSimulator,
+  UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR,
+  UNISWAP_V3_SWAP_ROUTER_02_ABI,
 } from "../src/wallet/index.js";
 
 const USDC = "0xcebA9300f2b948710d2653dD7B07f33A8B32118C" as Address;
@@ -342,5 +350,101 @@ describe("Real SDK Integration Helpers (Altana, ERC-8021 Attribution, ERC-8004)"
     expect(decoded.name).toBe(card.name);
     expect(decoded.registrations[0]?.agentId).toBe(42);
     expect(decoded.registrations[0]?.agentRegistry).toContain("eip155:42220:");
+  });
+});
+
+describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", () => {
+  it("exposes valid checksummed Celo Mainnet token and Uniswap V3 SwapRouter02 addresses", () => {
+    expect(isAddress(CELO_MAINNET_TOKENS.USDC)).toBe(true);
+    expect(isAddress(CELO_MAINNET_TOKENS.USDT)).toBe(true);
+    expect(isAddress(CELO_MAINNET_TOKENS.cUSD)).toBe(true);
+    expect(isAddress(CELO_MAINNET_TOKENS.CELO)).toBe(true);
+    expect(isAddress(CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02)).toBe(true);
+  });
+
+  it("encodes ERC-20 transfer calldata with valid selector 0xa9059cbb and decodable celo_cbf00f366dda tag", () => {
+    const built = encodeAttributedErc20Transfer({
+      token: CELO_MAINNET_TOKENS.USDC,
+      recipient: RECIPIENT_B,
+      amount: 50_000n,
+    });
+
+    expect(built.to).toBe(CELO_MAINNET_TOKENS.USDC);
+    expect(built.selector).toBe(ERC20_TRANSFER_SELECTOR);
+    expect(built.data.startsWith(ERC20_TRANSFER_SELECTOR)).toBe(true);
+    expect(built.attributionCode).toBe("celo_cbf00f366dda");
+
+    // Verify raw ABI arguments decode cleanly
+    const decodedCall = decodeFunctionData({
+      abi: ERC20_ABI,
+      data: built.rawData,
+    });
+    expect(decodedCall.functionName).toBe("transfer");
+    expect(decodedCall.args).toEqual([RECIPIENT_B, 50_000n]);
+
+    // Verify ERC-8021 suffix decodes via @celo/attribution-tags fromDataSuffix
+    const decodedTag = decodeAttributionTag(built.data);
+    expect(decodedTag).not.toBeNull();
+    expect(decodedTag?.codes).toContain("celo_cbf00f366dda");
+
+    // Verify idempotency: re-applying appendAttributionTag does not duplicate suffix
+    const reTagged = appendAttributionTag(built.data, "celo_cbf00f366dda");
+    expect(reTagged).toBe(built.data);
+  });
+
+  it("encodes Uniswap V3 SwapRouter02 exactInputSingle calldata with selector 0x04e45aaf and celo_cbf00f366dda tag", () => {
+    const built = encodeAttributedUniswapV3Swap({
+      tokenIn: CELO_MAINNET_TOKENS.USDC,
+      tokenOut: CELO_MAINNET_TOKENS.CELO,
+      fee: 3000,
+      recipient: WALLET,
+      amountIn: 100_000n,
+      amountOutMin: 1n,
+    });
+
+    expect(built.to).toBe(CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02);
+    expect(built.selector).toBe(UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR);
+    expect(built.data.startsWith(UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR)).toBe(true);
+    expect(built.attributionCode).toBe("celo_cbf00f366dda");
+
+    const decodedCall = decodeFunctionData({
+      abi: UNISWAP_V3_SWAP_ROUTER_02_ABI,
+      data: built.rawData,
+    });
+    expect(decodedCall.functionName).toBe("exactInputSingle");
+    expect(decodedCall.args[0]).toEqual({
+      tokenIn: CELO_MAINNET_TOKENS.USDC,
+      tokenOut: CELO_MAINNET_TOKENS.CELO,
+      fee: 3000,
+      recipient: WALLET,
+      amountIn: 100_000n,
+      amountOutMin: 1n,
+      sqrtPriceLimitX96: 0n,
+    });
+
+    const decodedTag = decodeAttributionTag(built.data);
+    expect(decodedTag).not.toBeNull();
+    expect(decodedTag?.codes).toContain("celo_cbf00f366dda");
+  });
+
+  it("rejects zero amounts or identical tokenIn/tokenOut in calldata builders", () => {
+    expect(() =>
+      encodeAttributedErc20Transfer({
+        token: CELO_MAINNET_TOKENS.USDC,
+        recipient: RECIPIENT_A,
+        amount: 0n,
+      }),
+    ).toThrow();
+
+    expect(() =>
+      encodeAttributedUniswapV3Swap({
+        tokenIn: CELO_MAINNET_TOKENS.USDC,
+        tokenOut: CELO_MAINNET_TOKENS.USDC,
+        fee: 500,
+        recipient: WALLET,
+        amountIn: 10_000n,
+        amountOutMin: 0n,
+      }),
+    ).toThrow();
   });
 });

@@ -24,6 +24,17 @@ export function appendAttributionTag(
   if (code === undefined || (typeof code === "string" && code.trim() === "")) {
     return baseData;
   }
+
+  // Idempotency guard: if the calldata already ends with the requested ERC-8021 code(s),
+  // avoid appending a duplicate suffix.
+  const existing = baseData.length > 2 ? fromDataSuffix(baseData) : null;
+  if (existing !== null) {
+    const requested = typeof code === "string" ? [code] : code;
+    if (requested.every((c) => existing.codes.includes(c))) {
+      return baseData;
+    }
+  }
+
   const suffix = toDataSuffix(code);
   return concatHex([baseData, suffix]);
 }
