@@ -1,0 +1,29 @@
+{
+  "name": "caprail",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "CapRail — Guardrailed Auto-DCA & Revenue Splitter powered by Altana Agent Wallet Session Keys on Celo Mainnet",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/takaolovely/caprail.git"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check:network": "tsx src/cli/check-network.ts",
+    "dry-run": "tsx src/cli/dry-run.ts"
+  },
+  "dependencies": {
+    "@altananetwork/sdk": "latest",
+    "@celo/attribution-tags": "latest",
+    "viem": "^2.21.0",
+    "zod": "^4.6.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

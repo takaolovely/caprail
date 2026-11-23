@@ -1,0 +1,13 @@
+{
+  "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
+  "name": "CapRail — Guardrailed Auto-DCA & Revenue Splitter",
+  "description": "Non-custodial autonomous treasury agent on Celo Mainnet (42220) using Altana Session Keys with deterministic spend caps, target allowlists, 10000-bps split math, ERC-8021 attribution tags, and 1-tx revocation.",
+  "services": [
+    {
+      "name": "CLI",
+      "endpoint": "https://github.com/takaolovely/caprail",
+      "version": "0.1.0"
+    }
+  ],
+  "registrations": []
+}

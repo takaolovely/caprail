@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+coverage/
+*.tsbuildinfo
+
+# Environment & Secrets (NEVER COMMIT)
+.env
+.env.*
+!.env.example
+
+# Private keys, certificates, keystores
+*.key
+*.pem
+*.p12
+*.pfx
+*private*
+*secret*
+*mnemonic*
+*seed*
+keystore/
+keystores/
+*keystore*.json
+wallet-secrets/
+
+# Logs & OS artifacts
+*.log
+npm-debug.log*
+.DS_Store
+Thumbs.db
