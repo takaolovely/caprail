@@ -1,0 +1,3 @@
+{
+  "installCommand": "npm --prefix .. install && npm install"
+}
