@@ -1,8 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import { decodeFunctionData, type Address } from "viem";
+import { decodeFunctionData, type Address, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
+import {
+  MISSING_LIVE_SESSION_CREDENTIALS_REASON,
+  resolveLiveSessionCredentials,
+} from "../src/cli/dca-tick.js";
 import {
   appendDecisionLog,
   computeDeviationBps,
@@ -14,9 +18,14 @@ import {
   type DecisionLogEntry,
 } from "../src/engine/index.js";
 import {
+  AUTO_DCA_ERC20_APPROVE_SIGNATURE,
+  AUTO_DCA_EXACT_INPUT_SINGLE_SIGNATURE,
+  buildAutoDcaSessionPermissions,
   buildExactInputSingleCalldata,
+  CELO_MAINNET_ROUTERS,
   CELO_MAINNET_TOKENS,
   computeMinAmountOut,
+  executeAutoDcaWithSession,
   UNISWAP_V3_SWAP_ROUTER_02_ABI,
 } from "../src/wallet/index.js";
 
@@ -167,5 +176,101 @@ describe("Auto-DCA Market Decision Gate (evaluateDcaTick)", () => {
     } finally {
       rmSync(tmpDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("Session-Only Agent Execution Decoupling (Human Control vs Agent Plane)", () => {
+  const TEST_SESSION_KEY =
+    "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as Hex;
+
+  it("rejects --live execution when session credentials are missing without asking for OWNER_PRIVATE_KEY", () => {
+    expect(
+      resolveLiveSessionCredentials({
+        ALTANA_SESSION_PRIVATE_KEY: undefined,
+        ALTANA_WALLET_ADDRESS: undefined,
+      }),
+    ).toBeNull();
+
+    // Missing ALTANA_WALLET_ADDRESS must still fail
+    expect(
+      resolveLiveSessionCredentials({
+        ALTANA_SESSION_PRIVATE_KEY: TEST_SESSION_KEY,
+        ALTANA_WALLET_ADDRESS: undefined,
+      }),
+    ).toBeNull();
+
+    // Missing ALTANA_SESSION_PRIVATE_KEY must still fail
+    expect(
+      resolveLiveSessionCredentials({
+        ALTANA_SESSION_PRIVATE_KEY: undefined,
+        ALTANA_WALLET_ADDRESS: AGENT_WALLET,
+      }),
+    ).toBeNull();
+
+    // Both present -> succeeds cleanly with checksummed wallet address
+    const valid = resolveLiveSessionCredentials({
+      ALTANA_SESSION_PRIVATE_KEY: TEST_SESSION_KEY,
+      ALTANA_WALLET_ADDRESS: AGENT_WALLET.toLowerCase(),
+    });
+    expect(valid).not.toBeNull();
+    expect(valid?.walletAddress).toBe(AGENT_WALLET);
+    expect(valid?.sessionPrivateKey).toBe(TEST_SESSION_KEY);
+    expect(MISSING_LIVE_SESSION_CREDENTIALS_REASON).toBe(
+      "LIVE mode requested without ALTANA_SESSION_PRIVATE_KEY and ALTANA_WALLET_ADDRESS configured",
+    );
+  });
+
+  it("builds restricted Auto-DCA SessionPermissions scoped only to SwapRouter02 and USDC", () => {
+    const perms = buildAutoDcaSessionPermissions(2_000_000n); // $2.00/day USDC
+    expect(perms.calls).toHaveLength(2);
+    expect(perms.calls?.[0]).toEqual({
+      to: CELO_MAINNET_TOKENS.USDC,
+      signature: AUTO_DCA_ERC20_APPROVE_SIGNATURE,
+    });
+    expect(perms.calls?.[1]).toEqual({
+      to: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+      signature: AUTO_DCA_EXACT_INPUT_SINGLE_SIGNATURE,
+    });
+    const usdcSpend = perms.spend?.find(
+      (s) => s.token?.toLowerCase() === CELO_MAINNET_TOKENS.USDC.toLowerCase(),
+    );
+    expect(usdcSpend?.limit).toBe(2_000_000n);
+    expect(usdcSpend?.period).toBe("day");
+  });
+
+  it("halts cleanly with HALTED_NO_GAS or DEFER for revoked/missing session key without OWNER_PRIVATE_KEY", async () => {
+    // Case 1: Insufficient native CELO gas -> HALTED_NO_GAS
+    const noGas = await executeAutoDcaWithSession({
+      walletAddress: AGENT_WALLET,
+      sessionPrivateKey: TEST_SESSION_KEY,
+      amountInBaseUnits: 500_000n,
+      dailySpendCapBaseUnits: 2_000_000n,
+      publicClient: {
+        getBalance: async () => 100_000_000_000_000n, // 0.0001 CELO < 0.002 CELO
+        readContract: (async () => 1_000_000n) as never,
+        simulateContract: (async () => ({ result: 1n })) as never,
+        waitForTransactionReceipt: (async () => ({ status: "success" })) as never,
+      },
+    });
+    expect(noGas.decision).toBe("HALTED_NO_GAS");
+    expect(noGas.txHash).toBeNull();
+
+    // Case 2: Session key not authorized on-chain (revoked or ungranted) -> DEFER
+    const revokedKey = await executeAutoDcaWithSession({
+      walletAddress: AGENT_WALLET,
+      sessionPrivateKey: TEST_SESSION_KEY,
+      amountInBaseUnits: 500_000n,
+      dailySpendCapBaseUnits: 2_000_000n,
+      publicClient: {
+        getBalance: async () => 50_000_000_000_000_000n, // 0.05 CELO
+        readContract: (async () => 2_000_000n) as never,
+        simulateContract: (async () => ({ result: 1n })) as never,
+        waitForTransactionReceipt: (async () => ({ status: "success" })) as never,
+      },
+      readOnChainKey: async () => null,
+    });
+    expect(revokedKey.decision).toBe("DEFER");
+    expect(revokedKey.reason).toContain("not authorized on Altana wallet");
+    expect(revokedKey.txHash).toBeNull();
   });
 });

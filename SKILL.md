@@ -11,10 +11,12 @@ This skill defines the agent-agnostic CLI interface for the **CapRail Agent Exec
 
 ## Safety Boundaries (Two-Plane Architecture)
 
-1. **Human Control Plane (`https://caprail.vercel.app`):**
-   - Only the wallet owner sets on-chain spend caps (`$2.00/day` default), target allowlists (`SwapRouter02`), and executes **1-tx emergency revoke** at the Altana KeyStore (`0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c`).
-2. **Agent Execution Plane (`npm run dca:tick`):**
-   - Operates strictly within the delegated Altana EIP-7702 Session Key permissions.
+1. **Human Control Plane (`https://caprail.vercel.app` & local `npm run session:grant`):**
+   - `OWNER_PRIVATE_KEY` stays strictly on the human owner's local machine and is NEVER copied to an agent host or VPS.
+   - The owner runs `npm run session:grant` once locally to authorize a bounded Altana EIP-7702 Session Key (`$2.00/day` default USDC spend cap, 14-day expiry, `SwapRouter02.exactInputSingle` + `USDC.approve` only) and retains exclusive authority to execute **1-tx emergency revoke** at the Altana KeyStore (`0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c`).
+2. **Agent Execution Plane (VPS / Hermes running `npm run dca:tick`):**
+   - Receives **only** `ALTANA_WALLET_ADDRESS` and `ALTANA_SESSION_PRIVATE_KEY`.
+   - Operates strictly within the pre-granted Altana EIP-7702 Session Key permissions. If `ALTANA_SESSION_PRIVATE_KEY` or `ALTANA_WALLET_ADDRESS` is missing in `--live` mode, `dca:tick` logs `DEFER` cleanly without requesting `OWNER_PRIVATE_KEY`.
    - Allowed pair: Native `USDC` (`0xcebA9300f2b948710d2653dD7B07f33A8B32118C`) -> `CELO` (`0x471EcE3750Da237f93B8E339c536989b8978a438`) via Uniswap V3 `SwapRouter02` (`0x5615CDAb10dc425a742d643d949a7F474C01abc4`, `0.01%` pool `fee = 100`).
    - Appends ERC-8021 builder attribution tag `celo_0518175d3efe` to every broadcast transaction.
    - Never prints private keys, session keys, or raw `.env` values to `stdout` or `logs/decisions.jsonl`.
@@ -26,11 +28,24 @@ This skill defines the agent-agnostic CLI interface for the **CapRail Agent Exec
 - Node.js `>= 20` and dependencies installed via `npm install`.
 - Network access to Celo Mainnet RPC (`CELO_RPC_URL`, defaults to `https://forno.celo.org`).
 - For **`--dry-run`**: **zero private keys required**.
-- For **`--live`**: configured local `.env` with Altana signer credentials (`ALTANA_ADMIN_PRIVATE_KEY` or `OWNER_PRIVATE_KEY`, optional `ALTANA_SESSION_PRIVATE_KEY` and `ALTANA_WALLET_ADDRESS`), sufficient native `CELO` for gas (`>= 0.002 CELO`), and sufficient Native `USDC` for the order size.
+- For **one-time owner session provisioning (local machine only)**: `OWNER_PRIVATE_KEY` in local `.env` to run `npm run session:grant`.
+- For **autonomous `--live` execution (VPS / agent host)**: ONLY `ALTANA_WALLET_ADDRESS` and `ALTANA_SESSION_PRIVATE_KEY` in the agent `.env`, plus sufficient native `CELO` (`>= 0.002 CELO`) and Native `USDC` in the Altana wallet.
 
 ---
 
 ## Commands
+
+### 0. One-Time Owner Session Provisioning (Local Owner Machine Only)
+
+Authorizes a scoped Altana EIP-7702 Session Key on Celo Mainnet and prints the exact `ALTANA_WALLET_ADDRESS` and `ALTANA_SESSION_PRIVATE_KEY` lines to copy to the VPS agent `.env`:
+
+```bash
+# Preview parameters without broadcasting
+npm run session:grant -- --dry-run --daily-cap 2 --days 14
+
+# Grant bounded Auto-DCA session key on Celo Mainnet
+npm run session:grant -- --daily-cap 2 --days 14
+```
 
 ### 1. Dry-Run Evaluation (Default, No Broadcast)
 
@@ -40,9 +55,9 @@ Fetches live Celo Mainnet pool state (`blockNumber`, `sqrtPriceX96`, `liquidity`
 npm run dca:tick -- --dry-run
 ```
 
-### 2. Live Mainnet Execution
+### 2. Live Mainnet Execution (Session-Only on VPS / Hermes)
 
-Runs the same market evaluation gate. If `decision === "EXECUTE"`, checks gas balance (returning `HALTED_NO_GAS` cleanly if below `0.002 CELO`) and submits the swap via Altana Session Key with `25 bps` execution slippage floor and ERC-8021 tag `celo_0518175d3efe`:
+Runs the same market evaluation gate using ONLY `ALTANA_WALLET_ADDRESS` and `ALTANA_SESSION_PRIVATE_KEY`. If `decision === "EXECUTE"`, checks gas balance (returning `HALTED_NO_GAS` cleanly if below `0.002 CELO`) and submits the swap via the pre-granted Altana Session Key with `25 bps` execution slippage floor and ERC-8021 tag `celo_0518175d3efe`:
 
 ```bash
 npm run dca:tick -- --live

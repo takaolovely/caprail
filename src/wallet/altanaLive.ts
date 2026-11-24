@@ -2,7 +2,10 @@ import {
   CELO,
   createClient,
   erc8004Registry,
+  getKey,
   isAltanaError,
+  keyHashForSessionOrKey,
+  NATIVE_TOKEN,
   signerFromPrivateKey,
   type Call,
   type Client,
@@ -16,19 +19,35 @@ import {
 } from "@altananetwork/sdk";
 import {
   createPublicClient,
+  encodeFunctionData,
+  formatUnits,
   getAddress,
   http,
   type Address,
   type Hex,
   type PublicClient,
 } from "viem";
+import { generatePrivateKey } from "viem/accounts";
 import { celo } from "viem/chains";
 import {
   evaluateSessionGuardrails,
   SessionPolicySchema,
   type SessionPolicy,
 } from "../policy/index.js";
-import { appendAttributionTag } from "./attribution.js";
+import {
+  appendAttributionTag,
+  CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
+} from "./attribution.js";
+import {
+  buildExactInputSingleCalldata,
+  CELO_MAINNET_ROUTERS,
+  CELO_MAINNET_TOKENS,
+  computeMinAmountOut,
+  DEFAULT_EXECUTION_SLIPPAGE_BPS,
+  ERC20_ABI,
+  UNISWAP_V3_SWAP_ROUTER_02_ABI,
+  type UniswapV3FeeTier,
+} from "./calldata.js";
 import type {
   AgentWalletAdapter,
   WalletExecutionCall,
@@ -581,4 +600,490 @@ export class AltanaLiveAdapter implements AgentWalletAdapter {
       timestamp,
     };
   }
+}
+
+export const AUTO_DCA_EXACT_INPUT_SINGLE_SIGNATURE =
+  "exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))" as const;
+export const AUTO_DCA_ERC20_APPROVE_SIGNATURE =
+  "approve(address,uint256)" as const;
+export const DEFAULT_AUTO_DCA_DAILY_GAS_CAP_WEI = 1_000_000_000_000_000_000n; // 1.0 CELO/day relay fee cap
+export const DEFAULT_MIN_GAS_CELO_WEI = 2_000_000_000_000_000n; // 0.002 CELO minimum balance
+
+/**
+ * Builds restricted on-chain Altana SessionPermissions for bounded USDC -> CELO Auto-DCA.
+ * Permits only Uniswap V3 SwapRouter02 `exactInputSingle` (and optional USDC `approve`)
+ * under a strict daily Native USDC spend cap.
+ */
+export function buildAutoDcaSessionPermissions(
+  dailySpendCapUnits: bigint,
+  opts?: {
+    includeUsdcApprove?: boolean | undefined;
+    dailyGasCapWei?: bigint | undefined;
+  },
+): SessionPermissions {
+  if (dailySpendCapUnits <= 0n) {
+    throw new Error("dailySpendCapUnits must be strictly greater than 0");
+  }
+  const includeUsdcApprove = opts?.includeUsdcApprove ?? true;
+  const dailyGasCapWei =
+    opts?.dailyGasCapWei ?? DEFAULT_AUTO_DCA_DAILY_GAS_CAP_WEI;
+
+  return {
+    calls: [
+      ...(includeUsdcApprove
+        ? [
+            {
+              to: CELO_MAINNET_TOKENS.USDC,
+              signature: AUTO_DCA_ERC20_APPROVE_SIGNATURE,
+            },
+          ]
+        : []),
+      {
+        to: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+        signature: AUTO_DCA_EXACT_INPUT_SINGLE_SIGNATURE,
+      },
+    ],
+    spend: [
+      {
+        limit: dailySpendCapUnits,
+        period: "day",
+        token: CELO_MAINNET_TOKENS.USDC,
+      },
+      {
+        limit: dailyGasCapWei,
+        period: "day",
+        token: NATIVE_TOKEN,
+      },
+    ],
+  };
+}
+
+export interface GrantAutoDcaSessionOptions {
+  adminPrivateKey: Hex;
+  sessionPrivateKey?: Hex | undefined;
+  dailySpendCapUsdc?: number | undefined;
+  days?: number | undefined;
+  rpcUrl?: string | undefined;
+  existingWalletAddress?: Address | undefined;
+  dryRun?: boolean | undefined;
+}
+
+export interface GrantAutoDcaSessionResult {
+  dryRun: boolean;
+  walletAddress: Address;
+  walletReused: boolean;
+  sessionPrivateKey: Hex;
+  sessionGenerated: boolean;
+  sessionAddress: Address;
+  sessionPublicKey: Hex;
+  dailySpendCapUsdc: number;
+  dailySpendCapUnits: bigint;
+  days: number;
+  expiry: number;
+  permissions: SessionPermissions;
+  keyId?: Hex | undefined;
+  keyHash?: Hex | undefined;
+  txHash?: Hex | undefined;
+}
+
+/**
+ * Human Control Plane provisioning helper (run once locally by the owner).
+ * Uses `OWNER_PRIVATE_KEY` (or `ALTANA_ADMIN_PRIVATE_KEY`) to authorize a scoped
+ * Auto-DCA session key on Celo Mainnet (`SwapRouter02.exactInputSingle` + daily USDC cap).
+ */
+export async function grantAutoDcaSession(
+  opts: GrantAutoDcaSessionOptions,
+): Promise<GrantAutoDcaSessionResult> {
+  const dailySpendCapUsdc = opts.dailySpendCapUsdc ?? 2;
+  const days = opts.days ?? 14;
+  if (!Number.isFinite(dailySpendCapUsdc) || dailySpendCapUsdc <= 0) {
+    throw new Error("dailySpendCapUsdc must be strictly positive");
+  }
+  if (!Number.isInteger(days) || days <= 0) {
+    throw new Error("days must be a positive integer");
+  }
+
+  const adminSigner = signerFromPrivateKey(opts.adminPrivateKey);
+  const sessionGenerated = opts.sessionPrivateKey === undefined;
+  const sessionPrivateKey: Hex = opts.sessionPrivateKey ?? generatePrivateKey();
+  const sessionSigner = signerFromPrivateKey(sessionPrivateKey);
+
+  const dailySpendCapUnits = BigInt(Math.round(dailySpendCapUsdc * 1_000_000));
+  const nowSec = Math.floor(Date.now() / 1000);
+  const expiry = nowSec + days * 86_400;
+  const permissions = buildAutoDcaSessionPermissions(dailySpendCapUnits, {
+    includeUsdcApprove: true,
+  });
+
+  const targetWalletAddress = opts.existingWalletAddress
+    ? getAddress(opts.existingWalletAddress)
+    : getAddress(adminSigner.address);
+
+  if (opts.dryRun) {
+    return {
+      dryRun: true,
+      walletAddress: targetWalletAddress,
+      walletReused: opts.existingWalletAddress !== undefined,
+      sessionPrivateKey,
+      sessionGenerated,
+      sessionAddress: getAddress(sessionSigner.address),
+      sessionPublicKey: sessionSigner.publicKey,
+      dailySpendCapUsdc,
+      dailySpendCapUnits,
+      days,
+      expiry,
+      permissions,
+    };
+  }
+
+  const client = createAltanaCeloClient();
+  const publicClient = createPublicClient({
+    chain: celo,
+    transport: http(opts.rpcUrl ?? CELO.publicRpcUrl),
+  });
+
+  const resolved = await resolveOrProvisionAltanaWallet({
+    client,
+    adminSigner,
+    publicClient,
+    existingWalletAddress: opts.existingWalletAddress,
+  });
+
+  const feeTokens = [NATIVE_TOKEN, CELO_MAINNET_TOKENS.USDC] as const;
+  const grantResult = await grantSessionWithNonceRecovery({
+    client,
+    wallet: resolved.wallet,
+    adminSigner,
+    sessionSigner,
+    permissions,
+    expiry,
+    feeToken: feeTokens,
+  });
+
+  if (grantResult.status !== "granted") {
+    throw new Error(
+      `Altana grantSession failed: ${JSON.stringify(grantResult.legs)}`,
+    );
+  }
+
+  return {
+    dryRun: false,
+    walletAddress: getAddress(resolved.wallet.address),
+    walletReused: resolved.reused,
+    sessionPrivateKey,
+    sessionGenerated,
+    sessionAddress: getAddress(sessionSigner.address),
+    sessionPublicKey: sessionSigner.publicKey,
+    dailySpendCapUsdc,
+    dailySpendCapUnits,
+    days,
+    expiry,
+    permissions,
+    keyId: grantResult.keyId,
+    keyHash: grantResult.keyHash,
+    txHash: grantResult.transactionHash,
+  };
+}
+
+export interface ExecuteAutoDcaWithSessionOptions {
+  walletAddress: Address;
+  sessionPrivateKey: Hex;
+  amountInBaseUnits: bigint;
+  dailySpendCapBaseUnits: bigint;
+  feeTier?: UniswapV3FeeTier | undefined;
+  executionSlippageBps?: number | undefined;
+  spotPriceUsdcPerCelo?: number | undefined;
+  attributionCode?: string | undefined;
+  rpcUrl?: string | undefined;
+  minGasCeloWei?: bigint | undefined;
+  /** Optional dependency injection hooks for deterministic unit testing */
+  client?: Client | undefined;
+  publicClient?: Pick<
+    PublicClient,
+    "getBalance" | "readContract" | "simulateContract" | "waitForTransactionReceipt"
+  > | undefined;
+  readOnChainKey?: ((
+    walletAddress: Address,
+    keyHash: Hex,
+  ) => Promise<{ expiry: number } | null>) | undefined;
+}
+
+export interface ExecuteAutoDcaWithSessionResult {
+  decision: "EXECUTE" | "DEFER" | "HALTED_NO_GAS";
+  reason: string;
+  txHash: Hex | null;
+  callsId?: Hex | undefined;
+  approvalTxHash?: Hex | null | undefined;
+  amountOutMinimum?: bigint | undefined;
+}
+
+function estimateCeloOutFallback(
+  amountInBaseUnits: bigint,
+  spotPriceUsdcPerCelo: number,
+  feeTier: UniswapV3FeeTier,
+): bigint {
+  if (amountInBaseUnits <= 0n || spotPriceUsdcPerCelo <= 0) {
+    return 0n;
+  }
+  const usdcHuman = Number(amountInBaseUnits) / 1_000_000;
+  const netUsdc = usdcHuman * (1 - feeTier / 1_000_000);
+  return BigInt(Math.floor((netUsdc / spotPriceUsdcPerCelo) * 1e18));
+}
+
+/**
+ * Agent Execution Plane swap helper (VPS / Hermes).
+ * Uses ONLY `ALTANA_SESSION_PRIVATE_KEY` and `ALTANA_WALLET_ADDRESS` to sign and
+ * broadcast a bounded `USDC -> CELO` SwapRouter02 swap with `25 bps` execution
+ * slippage and ERC-8021 builder attribution (`celo_0518175d3efe`).
+ * Never requires `OWNER_PRIVATE_KEY` or `ALTANA_ADMIN_PRIVATE_KEY`.
+ */
+export async function executeAutoDcaWithSession(
+  opts: ExecuteAutoDcaWithSessionOptions,
+): Promise<ExecuteAutoDcaWithSessionResult> {
+  const walletAddress = getAddress(opts.walletAddress);
+  const feeTier: UniswapV3FeeTier = opts.feeTier ?? 100;
+  const executionSlippageBps =
+    opts.executionSlippageBps ?? DEFAULT_EXECUTION_SLIPPAGE_BPS;
+  const attributionCode =
+    opts.attributionCode ?? CAPRAIL_DEFAULT_ATTRIBUTION_CODE;
+  const minGasCeloWei = opts.minGasCeloWei ?? DEFAULT_MIN_GAS_CELO_WEI;
+
+  const publicClient =
+    opts.publicClient ??
+    createPublicClient({
+      chain: celo,
+      transport: http(opts.rpcUrl ?? CELO.publicRpcUrl),
+    });
+
+  // 1) Check native CELO gas balance and Native USDC balance before signing
+  const [celoBalanceWei, usdcBalanceUnits, usdcAllowance] = await Promise.all([
+    publicClient.getBalance({ address: walletAddress }),
+    publicClient.readContract({
+      address: CELO_MAINNET_TOKENS.USDC,
+      abi: ERC20_ABI,
+      functionName: "balanceOf",
+      args: [walletAddress],
+    }),
+    publicClient.readContract({
+      address: CELO_MAINNET_TOKENS.USDC,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [walletAddress, CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02],
+    }),
+  ]);
+
+  if (celoBalanceWei < minGasCeloWei) {
+    return {
+      decision: "HALTED_NO_GAS",
+      reason: `Insufficient native CELO gas balance: have ${formatUnits(celoBalanceWei, 18)} CELO, require at least ${formatUnits(minGasCeloWei, 18)} CELO`,
+      txHash: null,
+    };
+  }
+
+  if (usdcBalanceUnits < opts.amountInBaseUnits) {
+    return {
+      decision: "DEFER",
+      reason: `Insufficient Native USDC balance: have ${formatUnits(usdcBalanceUnits, 6)} USDC, need ${formatUnits(opts.amountInBaseUnits, 6)} USDC`,
+      txHash: null,
+    };
+  }
+
+  // 2) Reconstruct live Session using ONLY sessionPrivateKey + on-chain account key lookup
+  const sessionSigner = signerFromPrivateKey(opts.sessionPrivateKey);
+  const keyHash = keyHashForSessionOrKey(sessionSigner.publicKey);
+
+  let onChainExpiry: number;
+  try {
+    const keyRecord = opts.readOnChainKey
+      ? await opts.readOnChainKey(walletAddress, keyHash)
+      : await getKey(
+          publicClient as Parameters<typeof getKey>[0],
+          walletAddress,
+          keyHash,
+        );
+    if (keyRecord === null) {
+      return {
+        decision: "DEFER",
+        reason: `Session key ${sessionSigner.address} is not authorized on Altana wallet ${walletAddress} (revoked or not yet granted via session:grant)`,
+        txHash: null,
+      };
+    }
+    onChainExpiry = Number(keyRecord.expiry);
+  } catch {
+    return {
+      decision: "DEFER",
+      reason: `Session key ${sessionSigner.address} is not authorized on Altana wallet ${walletAddress} (revoked or not yet granted via session:grant)`,
+      txHash: null,
+    };
+  }
+
+  const nowSec = Math.floor(Date.now() / 1000);
+  if (onChainExpiry > 0 && nowSec >= onChainExpiry) {
+    return {
+      decision: "DEFER",
+      reason: `Session key ${sessionSigner.address} expired at ${new Date(onChainExpiry * 1000).toISOString()}. Run npm run session:grant from the owner machine to renew.`,
+      txHash: null,
+    };
+  }
+
+  const effectiveDailyCap =
+    opts.dailySpendCapBaseUnits >= opts.amountInBaseUnits
+      ? opts.dailySpendCapBaseUnits
+      : opts.amountInBaseUnits;
+
+  const permissions = buildAutoDcaSessionPermissions(effectiveDailyCap, {
+    includeUsdcApprove: true,
+  });
+
+  const session: Session = {
+    walletAddress,
+    signer: sessionSigner,
+    publicKey: sessionSigner.publicKey,
+    expiry: onChainExpiry,
+    permissions,
+  };
+
+  const client = opts.client ?? createAltanaCeloClient();
+  const feeTokens = [NATIVE_TOKEN, CELO_MAINNET_TOKENS.USDC] as const;
+
+  // 3) If SwapRouter02 allowance < amountIn, approve via session key first and await receipt
+  let approvalTxHash: Hex | null = null;
+  if (usdcAllowance < opts.amountInBaseUnits) {
+    const rawApprove = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02, opts.amountInBaseUnits],
+    });
+    const approveData = appendAttributionTag(rawApprove, attributionCode);
+    try {
+      const approveExec = await client.execute({
+        session,
+        chainId: CELO.chainId,
+        feeToken: feeTokens,
+        calls: [{ to: CELO_MAINNET_TOKENS.USDC, data: approveData }],
+      });
+      if (approveExec.status === "FAILED") {
+        return {
+          decision: "DEFER",
+          reason: `USDC approval via Altana session key failed (callsId=${approveExec.callsId})`,
+          txHash: approveExec.transactionHash ?? null,
+        };
+      }
+      if (approveExec.transactionHash !== undefined) {
+        approvalTxHash = approveExec.transactionHash;
+        await publicClient.waitForTransactionReceipt({
+          hash: approveExec.transactionHash,
+        });
+      }
+    } catch (err) {
+      const msg = isAltanaError(err)
+        ? `[${err.code}] ${err.message}`
+        : err instanceof Error
+          ? err.message
+          : String(err);
+      return {
+        decision: "DEFER",
+        reason: `USDC approval via Altana session key rejected: ${msg}`,
+        txHash: null,
+      };
+    }
+  }
+
+  // 4) Quote live CELO output via simulateContract (fallback to spot estimate) and apply 25 bps slippage buffer
+  let quotedAmountOut: bigint;
+  try {
+    const { result } = await publicClient.simulateContract({
+      address: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+      abi: UNISWAP_V3_SWAP_ROUTER_02_ABI,
+      functionName: "exactInputSingle",
+      account: walletAddress,
+      args: [
+        {
+          tokenIn: CELO_MAINNET_TOKENS.USDC,
+          tokenOut: CELO_MAINNET_TOKENS.CELO,
+          fee: feeTier,
+          recipient: walletAddress,
+          amountIn: opts.amountInBaseUnits,
+          amountOutMinimum: 0n,
+          sqrtPriceLimitX96: 0n,
+        },
+      ],
+    });
+    quotedAmountOut = result;
+  } catch {
+    quotedAmountOut = estimateCeloOutFallback(
+      opts.amountInBaseUnits,
+      opts.spotPriceUsdcPerCelo ?? 0.0565,
+      feeTier,
+    );
+  }
+
+  const amountOutMinimum = computeMinAmountOut(
+    quotedAmountOut,
+    executionSlippageBps,
+  );
+
+  const swapCall = buildExactInputSingleCalldata({
+    tokenIn: CELO_MAINNET_TOKENS.USDC,
+    tokenOut: CELO_MAINNET_TOKENS.CELO,
+    fee: feeTier,
+    recipient: walletAddress,
+    amountIn: opts.amountInBaseUnits,
+    amountOutMinimum,
+    router: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+    attributionCode,
+  });
+
+  // 5) Submit swap through session-only AltanaLiveAdapter (no adminSigner)
+  const localPolicy: SessionPolicy = {
+    sessionId: `caprail-session-${keyHash.slice(0, 10)}`,
+    spendCapPerTx: opts.amountInBaseUnits,
+    totalSpendCap: effectiveDailyCap,
+    allowedTargets: [CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02],
+    expiresAt: onChainExpiry > 0 ? onChainExpiry : nowSec + 3_600,
+    revoked: false,
+    token: CELO_MAINNET_TOKENS.USDC,
+  };
+
+  const adapter = new AltanaLiveAdapter({
+    client,
+    wallet: { address: walletAddress },
+    policy: localPolicy,
+    session,
+    feeToken: feeTokens,
+    attributionCode,
+  });
+
+  const swapExec = await adapter.executeGuarded(
+    {
+      policyTarget: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+      to: swapCall.to,
+      value: 0n,
+      data: swapCall.data,
+      amount: opts.amountInBaseUnits,
+      token: CELO_MAINNET_TOKENS.USDC,
+      purpose: `Auto-DCA ${formatUnits(opts.amountInBaseUnits, 6)} USDC -> CELO (fee=${feeTier}, slippage=${executionSlippageBps} bps)`,
+    },
+    nowSec,
+  );
+
+  if (swapExec.status !== "APPROVED") {
+    return {
+      decision: "DEFER",
+      reason: swapExec.reason ?? "Altana session swap execution blocked",
+      txHash: swapExec.txHash ?? null,
+      callsId: swapExec.callsId,
+      approvalTxHash,
+      amountOutMinimum,
+    };
+  }
+
+  return {
+    decision: "EXECUTE",
+    reason: `Executed live Auto-DCA via session key (${formatUnits(opts.amountInBaseUnits, 6)} USDC -> CELO, slippage=${executionSlippageBps} bps, tag=${attributionCode})`,
+    txHash: swapExec.txHash ?? null,
+    callsId: swapExec.callsId,
+    approvalTxHash,
+    amountOutMinimum,
+  };
 }

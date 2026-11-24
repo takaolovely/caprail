@@ -131,7 +131,8 @@ Executed live on **Celo Mainnet (`42220`)** using `@altananetwork/sdk@1.1.0` EIP
 │   └── cli/
 │       ├── check-network.ts           # Read-only Celo Mainnet (42220) + Altana SDK probe
 │       ├── dry-run.ts                 # Local simulation runner (positive + negative Auto-DCA tests)
-│       ├── dca-tick.ts                # Agent CLI runner (--dry-run / --live EXECUTE/DEFER tick)
+│       ├── grant-session.ts           # Owner-only one-time Altana session provisioning CLI
+│       ├── dca-tick.ts                # Session-only agent CLI runner (--dry-run / --live)
 │       └── live-test.ts               # Live Celo Mainnet session grant, verification tx, negative tests, 1-tx revoke
 ├── web/                               # Human Control Plane (React 19 + Vite + Tailwind + viem)
 ├── tests/
