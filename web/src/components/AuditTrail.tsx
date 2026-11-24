@@ -86,7 +86,7 @@ export function AuditTrail({ events, onClear }: AuditTrailProps) {
 
                   <div className="flex items-center gap-3 font-numeric text-[11px]">
                     <span className="text-[#15171c]">
-                      {amountUnits > 0n ? formatUsdcDisplay(amountUnits) : "—"}
+                      {amountUnits > 0n ? formatUsdcDisplay(amountUnits) : "-"}
                     </span>
                     <span className="hidden text-[#5d7166] sm:inline">
                       rem {formatUsdcDisplay(remainingUnits)}

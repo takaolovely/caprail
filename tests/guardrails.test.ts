@@ -1,11 +1,7 @@
 import { CELO } from "@altananetwork/sdk";
 import { decodeFunctionData, isAddress, type Address } from "viem";
 import { describe, expect, it } from "vitest";
-import {
-  AuditLogger,
-  AutoDcaEngine,
-  RevenueSplitterEngine,
-} from "../src/engine/index.js";
+import { AuditLogger, AutoDcaEngine } from "../src/engine/index.js";
 import {
   CELO_ERC8004_REGISTRY,
   decodeAgentCardDataUri,
@@ -14,13 +10,10 @@ import {
   withErc8004Registration,
 } from "../src/identity/erc8004.js";
 import {
-  computeDeterministicSplits,
   DcaStrategySchema,
   SessionPolicySchema,
-  SplitStrategySchema,
   type DcaStrategy,
   type SessionPolicy,
-  type SplitStrategy,
 } from "../src/policy/index.js";
 import {
   appendAttributionTag,
@@ -45,13 +38,12 @@ import {
   UNISWAP_V3_SWAP_ROUTER_02_ABI,
 } from "../src/wallet/index.js";
 
-const USDC = "0xcebA9300f2b948710d2653dD7B07f33A8B32118C" as Address;
-const CELO_TOKEN = "0x471EcE3750Da237f93B8E339c536989b8978a438" as Address;
-const WALLET = "0x1111111111111111111111111111111111111111" as Address;
-const ROUTER = "0x2222222222222222222222222222222222222222" as Address;
-const RECIPIENT_A = "0x3333333333333333333333333333333333333333" as Address;
-const RECIPIENT_B = "0x4444444444444444444444444444444444444444" as Address;
-const RECIPIENT_C = "0x5555555555555555555555555555555555555555" as Address;
+const USDC = CELO_MAINNET_TOKENS.USDC;
+const USDT = CELO_MAINNET_TOKENS.USDT;
+const CELO_TOKEN = CELO_MAINNET_TOKENS.CELO;
+const WALLET = "0x3631D44543384253C099f2A09c0D0bE109Eb7944" as Address;
+const ROUTER = CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02;
+const VERIFY_TARGET = "0x4444444444444444444444444444444444444444" as Address;
 const FOREIGN_ADDR = "0xdead00000000000000000000000000000000beef" as Address;
 
 const BASE_TIME = 1_795_000_000;
@@ -61,7 +53,7 @@ function makePolicy(overrides?: Partial<SessionPolicy>): SessionPolicy {
     sessionId: "test-session-1",
     spendCapPerTx: 50_000_000n,
     totalSpendCap: 100_000_000n,
-    allowedTargets: [ROUTER, RECIPIENT_A, RECIPIENT_B, RECIPIENT_C],
+    allowedTargets: [ROUTER],
     expiresAt: BASE_TIME + 86_400,
     revoked: false,
     token: USDC,
@@ -82,42 +74,7 @@ function makeDcaStrategy(overrides?: Partial<DcaStrategy>): DcaStrategy {
   };
 }
 
-function makeSplitStrategy(overrides?: Partial<SplitStrategy>): SplitStrategy {
-  return {
-    strategyId: "split-3way",
-    token: USDC,
-    recipients: [
-      { label: "Treasury", address: RECIPIENT_A, bps: 5000 },
-      { label: "Collaborator", address: RECIPIENT_B, bps: 3000 },
-      { label: "Reserve", address: RECIPIENT_C, bps: 2000 },
-    ],
-    ...overrides,
-  };
-}
-
-describe("Policy Schemas & Deterministic Split Math", () => {
-  it("rejects SplitStrategy whose recipient bps do not sum to 10000", () => {
-    const parsed = SplitStrategySchema.safeParse({
-      ...makeSplitStrategy(),
-      recipients: [
-        { label: "A", address: RECIPIENT_A, bps: 5000 },
-        { label: "B", address: RECIPIENT_B, bps: 4999 },
-      ],
-    });
-    expect(parsed.success).toBe(false);
-  });
-
-  it("rejects duplicate recipients (case-insensitive) in SplitStrategy", () => {
-    const parsed = SplitStrategySchema.safeParse({
-      ...makeSplitStrategy(),
-      recipients: [
-        { label: "A", address: RECIPIENT_A.toLowerCase(), bps: 5000 },
-        { label: "A2", address: RECIPIENT_A.toUpperCase().replace("0X", "0x"), bps: 5000 },
-      ],
-    });
-    expect(parsed.success).toBe(false);
-  });
-
+describe("Policy Schemas (SessionPolicy & DcaStrategy)", () => {
   it("rejects DcaStrategy where tokenIn equals tokenOut", () => {
     const parsed = DcaStrategySchema.safeParse(
       makeDcaStrategy({ tokenIn: USDC, tokenOut: USDC }),
@@ -132,68 +89,70 @@ describe("Policy Schemas & Deterministic Split Math", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("distributes indivisible amounts deterministically with zero dust loss", () => {
-    const payouts = computeDeterministicSplits(100n, [
-      { label: "A", address: RECIPIENT_A, bps: 3334 },
-      { label: "B", address: RECIPIENT_B, bps: 3333 },
-      { label: "C", address: RECIPIENT_C, bps: 3333 },
-    ]);
-    const total = payouts.reduce((acc, p) => acc + p.amount, 0n);
-    expect(total).toBe(100n);
-    expect(payouts.map((p) => p.amount)).toEqual([34n, 33n, 33n]);
+  it("rejects duplicate addresses (case-insensitive) in SessionPolicy.allowedTargets", () => {
+    const parsed = SessionPolicySchema.safeParse(
+      makePolicy({
+        allowedTargets: [
+          ROUTER.toLowerCase() as Address,
+          ROUTER.toUpperCase().replace("0X", "0x") as Address,
+        ],
+      }),
+    );
+    expect(parsed.success).toBe(false);
   });
 });
 
-describe("AutoDcaEngine & RevenueSplitterEngine Guardrails (LOCAL_SIMULATION)", () => {
-  it("approves valid Auto-DCA and 3-way Revenue Split within caps and logs structured audit events", async () => {
+describe("AutoDcaEngine Guardrails (LOCAL_SIMULATION)", () => {
+  it("approves bounded Auto-DCA runs within caps and logs structured audit events", async () => {
     const wallet = new LocalSessionSimulator({
       walletAddress: WALLET,
       policy: makePolicy(),
-      attributionCode: "celo_test1234",
+      attributionCode: CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
     });
     const auditLogger = new AuditLogger();
-    const dca = new AutoDcaEngine({ wallet, strategy: makeDcaStrategy(), auditLogger });
-    const splitter = new RevenueSplitterEngine({
+    const dca = new AutoDcaEngine({
       wallet,
-      strategy: makeSplitStrategy(),
+      strategy: makeDcaStrategy(),
       auditLogger,
     });
 
-    const dcaRes = await dca.executeRun({
-      minAmountOut: 1n,
+    const dcaRes1 = await dca.executeRun({
+      minAmountOut: 34_000_000_000_000_000_000n,
       slippageBps: 50,
       nowSec: BASE_TIME,
     });
-    expect(dcaRes.mode).toBe("LOCAL_SIMULATION");
-    expect(dcaRes.status).toBe("APPROVED");
-    expect(dcaRes.spentTotal).toBe(25_000_000n);
-    expect(dcaRes.remainingTotalCap).toBe(75_000_000n);
+    expect(dcaRes1.mode).toBe("LOCAL_SIMULATION");
+    expect(dcaRes1.status).toBe("APPROVED");
+    expect(dcaRes1.spentTotal).toBe(25_000_000n);
+    expect(dcaRes1.remainingTotalCap).toBe(75_000_000n);
 
-    const splitOut = await splitter.executeSplit({
-      totalAmount: 40_000_000n,
-      nowSec: BASE_TIME + 10,
+    const dcaRes2 = await dca.executeRun({
+      amountIn: 40_000_000n,
+      minAmountOut: 54_000_000_000_000_000_000n,
+      slippageBps: 75,
+      nowSec: BASE_TIME + 3600,
     });
-    expect(splitOut.result.mode).toBe("LOCAL_SIMULATION");
-    expect(splitOut.result.status).toBe("APPROVED");
-    expect(splitOut.payouts.map((p) => p.amount)).toEqual([
-      20_000_000n,
-      12_000_000n,
-      8_000_000n,
-    ]);
-    expect(splitOut.result.spentTotal).toBe(65_000_000n);
-    expect(splitOut.result.remainingTotalCap).toBe(35_000_000n);
+    expect(dcaRes2.mode).toBe("LOCAL_SIMULATION");
+    expect(dcaRes2.status).toBe("APPROVED");
+    expect(dcaRes2.spentTotal).toBe(65_000_000n);
+    expect(dcaRes2.remainingTotalCap).toBe(35_000_000n);
 
     expect(auditLogger.getEvents()).toHaveLength(2);
     expect(auditLogger.getEvents().every((e) => e.status === "APPROVED")).toBe(true);
+    expect(auditLogger.getEvents().every((e) => e.engine === "AUTO_DCA")).toBe(true);
   });
 
-  it("blocks over-per-tx-cap, cumulative over-total-cap, and foreign targets deterministically", async () => {
+  it("blocks over-per-tx-cap, cumulative over-total-cap, foreign targets, and unlisted tokens deterministically", async () => {
     const wallet = new LocalSessionSimulator({
       walletAddress: WALLET,
       policy: makePolicy({ spendCapPerTx: 50_000_000n, totalSpendCap: 60_000_000n }),
     });
     const auditLogger = new AuditLogger();
-    const dca = new AutoDcaEngine({ wallet, strategy: makeDcaStrategy(), auditLogger });
+    const dca = new AutoDcaEngine({
+      wallet,
+      strategy: makeDcaStrategy(),
+      auditLogger,
+    });
 
     // Over per-tx cap (51 > 50)
     const overPerTx = await dca.executeRun({
@@ -218,6 +177,23 @@ describe("AutoDcaEngine & RevenueSplitterEngine Guardrails (LOCAL_SIMULATION)", 
     expect(foreign.reasonCode).toBe("TARGET_NOT_ALLOWLISTED");
     expect(wallet.getSpentTotal()).toBe(0n);
 
+    // Unlisted token mismatch (USDT instead of USDC)
+    const unlistedToken = await wallet.executeGuarded(
+      {
+        policyTarget: ROUTER,
+        to: USDT,
+        value: 0n,
+        data: "0xa9059cbb",
+        amount: 10_000_000n,
+        token: USDT,
+        purpose: "unlisted token attack",
+      },
+      BASE_TIME,
+    );
+    expect(unlistedToken.status).toBe("BLOCKED");
+    expect(unlistedToken.reasonCode).toBe("TOKEN_MISMATCH");
+    expect(wallet.getSpentTotal()).toBe(0n);
+
     // Spend 40 valid, then try 30 (40 + 30 > 60 totalSpendCap)
     const okRun = await dca.executeRun({
       amountIn: 40_000_000n,
@@ -238,35 +214,17 @@ describe("AutoDcaEngine & RevenueSplitterEngine Guardrails (LOCAL_SIMULATION)", 
     expect(wallet.getSpentTotal()).toBe(40_000_000n);
   });
 
-  it("blocks Revenue Split atomically if any recipient is outside session allowedTargets", async () => {
-    const wallet = new LocalSessionSimulator({
-      walletAddress: WALLET,
-      policy: makePolicy({ allowedTargets: [RECIPIENT_A, RECIPIENT_B] }), // RECIPIENT_C omitted!
-    });
-    const auditLogger = new AuditLogger();
-    const splitter = new RevenueSplitterEngine({
-      wallet,
-      strategy: makeSplitStrategy(),
-      auditLogger,
-    });
-
-    const outcome = await splitter.executeSplit({
-      totalAmount: 30_000_000n,
-      nowSec: BASE_TIME,
-    });
-    expect(outcome.result.status).toBe("BLOCKED");
-    expect(outcome.result.reasonCode).toBe("TARGET_NOT_ALLOWLISTED");
-    // Atomic guarantee: 0 spent even though RECIPIENT_A and RECIPIENT_B were valid
-    expect(wallet.getSpentTotal()).toBe(0n);
-  });
-
   it("blocks DCA runs violating intervalSeconds or maxSlippageBps", async () => {
     const wallet = new LocalSessionSimulator({
       walletAddress: WALLET,
       policy: makePolicy(),
     });
     const auditLogger = new AuditLogger();
-    const dca = new AutoDcaEngine({ wallet, strategy: makeDcaStrategy(), auditLogger });
+    const dca = new AutoDcaEngine({
+      wallet,
+      strategy: makeDcaStrategy(),
+      auditLogger,
+    });
 
     const badSlippage = await dca.executeRun({
       minAmountOut: 1n,
@@ -296,7 +254,11 @@ describe("AutoDcaEngine & RevenueSplitterEngine Guardrails (LOCAL_SIMULATION)", 
       policy: makePolicy({ expiresAt: BASE_TIME + 100 }),
     });
     const auditLogger = new AuditLogger();
-    const dca = new AutoDcaEngine({ wallet, strategy: makeDcaStrategy(), auditLogger });
+    const dca = new AutoDcaEngine({
+      wallet,
+      strategy: makeDcaStrategy(),
+      auditLogger,
+    });
 
     // Expired
     const expired = await dca.executeRun({
@@ -327,7 +289,10 @@ describe("Real SDK Integration Helpers (Altana, ERC-8021 Attribution, ERC-8004)"
     expect(CAPRAIL_DEFAULT_ATTRIBUTION_CODE).toBe("celo_0518175d3efe");
     const derived = deriveRepoAttributionCode(CAPRAIL_REPO_SLUG);
     expect(derived.startsWith("celo_")).toBe(true);
-    const tagged = appendAttributionTag("0xa9059cbb00000001", CAPRAIL_DEFAULT_ATTRIBUTION_CODE);
+    const tagged = appendAttributionTag(
+      "0xa9059cbb00000001",
+      CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
+    );
     const decoded = decodeAttributionTag(tagged);
     expect(decoded).not.toBeNull();
     expect(decoded?.codes).toContain("celo_0518175d3efe");
@@ -339,7 +304,9 @@ describe("Real SDK Integration Helpers (Altana, ERC-8021 Attribution, ERC-8004)"
     expect(CELO.chainId).toBe(42220);
 
     const perms = buildAltanaSessionPermissions(makePolicy(), "day");
-    expect(perms.calls).toHaveLength(4);
+    expect(perms.calls).toHaveLength(1);
+    const firstCall = perms.calls?.[0];
+    expect(firstCall && "to" in firstCall ? firstCall.to : undefined).toBe(ROUTER);
     expect(perms.spend?.[0]?.limit).toBe(100_000_000n);
     expect(perms.spend?.[0]?.token).toBe(USDC);
   });
@@ -370,7 +337,7 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
   it("encodes ERC-20 transfer calldata with valid selector 0xa9059cbb and decodable celo_0518175d3efe tag", () => {
     const built = encodeAttributedErc20Transfer({
       token: CELO_MAINNET_TOKENS.USDC,
-      recipient: RECIPIENT_B,
+      recipient: VERIFY_TARGET,
       amount: 50_000n,
     });
 
@@ -379,20 +346,17 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(built.data.startsWith(ERC20_TRANSFER_SELECTOR)).toBe(true);
     expect(built.attributionCode).toBe("celo_0518175d3efe");
 
-    // Verify raw ABI arguments decode cleanly
     const decodedCall = decodeFunctionData({
       abi: ERC20_ABI,
       data: built.rawData,
     });
     expect(decodedCall.functionName).toBe("transfer");
-    expect(decodedCall.args).toEqual([RECIPIENT_B, 50_000n]);
+    expect(decodedCall.args).toEqual([VERIFY_TARGET, 50_000n]);
 
-    // Verify ERC-8021 suffix decodes via @celo/attribution-tags fromDataSuffix
     const decodedTag = decodeAttributionTag(built.data);
     expect(decodedTag).not.toBeNull();
     expect(decodedTag?.codes).toContain("celo_0518175d3efe");
 
-    // Verify idempotency: re-applying appendAttributionTag does not duplicate suffix
     const reTagged = appendAttributionTag(built.data, "celo_0518175d3efe");
     expect(reTagged).toBe(built.data);
   });
@@ -432,7 +396,6 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
       sqrtPriceLimitX96: 0n,
     });
 
-    // Explicit amountOutMinimum overrides quote calculation
     const explicit = encodeAttributedUniswapV3Swap({
       tokenIn: CELO_MAINNET_TOKENS.USDC,
       tokenOut: CELO_MAINNET_TOKENS.CELO,
@@ -456,7 +419,7 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(() =>
       encodeAttributedErc20Transfer({
         token: CELO_MAINNET_TOKENS.USDC,
-        recipient: RECIPIENT_A,
+        recipient: VERIFY_TARGET,
         amount: 0n,
       }),
     ).toThrow();
@@ -505,7 +468,6 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
       },
     };
 
-    // Case 1: Bytecode already exists on-chain -> reuses without createWallet()
     const reusedOnChain = await resolveOrProvisionAltanaWallet({
       client: fakeClient,
       adminSigner: fakeSigner,
@@ -514,7 +476,6 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(reusedOnChain.reused).toBe(true);
     expect(createCalls).toBe(0);
 
-    // Case 2: Pinned ALTANA_WALLET_ADDRESS in .env -> reuses without createWallet()
     const reusedPinned = await resolveOrProvisionAltanaWallet({
       client: fakeClient,
       adminSigner: fakeSigner,
@@ -524,7 +485,6 @@ describe("Celo Mainnet Calldata Builders & ERC-8021 Attribution (calldata.ts)", 
     expect(reusedPinned.reused).toBe(true);
     expect(createCalls).toBe(0);
 
-    // Case 3: Fresh wallet with transient nonce error -> retries and succeeds
     let transientAttempt = 0;
     const retryClient = {
       createWallet: async () => {

@@ -3,7 +3,6 @@ import { motion } from "motion/react";
 import {
   ArrowDownRight,
   CheckCircle2,
-  GitFork,
   Lock,
   Power,
   RotateCcw,
@@ -12,16 +11,12 @@ import {
 } from "lucide-react";
 import { AuditTrail } from "./AuditTrail.js";
 import { CeloLogo, UsdcLogo } from "./BrandIcons.js";
-import {
-  GuardrailTerminal,
-  type TerminalTab,
-} from "./GuardrailTerminal.js";
+import { GuardrailTerminal } from "./GuardrailTerminal.js";
 import type { AppRunMode } from "./TopBar.js";
 import { VerifiedReceiptCard } from "./VerifiedReceiptCard.js";
 import type {
   AuditEvent,
   CalldataPreview,
-  SplitRecipient,
   WalletExecutionResult,
 } from "../lib/sandboxBridge.js";
 
@@ -31,18 +26,12 @@ type JudgeStepId = "safe-flows" | "attack-sim" | "mainnet-proof" | "revoke-test"
 
 interface JudgeConsolePageProps {
   runMode: AppRunMode;
-  activeTab: TerminalTab;
-  onTabChange: (tab: TerminalTab) => void;
   perTxCapUsdc: number;
   totalCapUsdc: number;
   onPerTxCapChange: (val: number) => void;
   onTotalCapChange: (val: number) => void;
   dcaAmountUsdc: number;
   onDcaAmountChange: (val: number) => void;
-  splitAmountUsdc: number;
-  onSplitAmountChange: (val: number) => void;
-  recipients: readonly SplitRecipient[];
-  onRecipientBpsChange: (index: number, nextBps: number) => void;
   spentUnits: bigint;
   totalCapUnits: bigint;
   remainingUnits: bigint;
@@ -53,9 +42,9 @@ interface JudgeConsolePageProps {
   calldataPreview: CalldataPreview;
   auditEvents: readonly AuditEvent[];
   isExecuting: boolean;
-  onExecuteActiveTab: () => void;
+  onExecuteDca: () => void;
   onPresetSafeDca: () => void;
-  onPresetSafeSplit: () => void;
+  onPresetMicroDca: () => void;
   onPresetOverCapAttack: () => void;
   onPresetUnlistedAttack: () => void;
   onRevokeSession: () => void;
@@ -66,18 +55,12 @@ interface JudgeConsolePageProps {
 
 export function JudgeConsolePage({
   runMode,
-  activeTab,
-  onTabChange,
   perTxCapUsdc,
   totalCapUsdc,
   onPerTxCapChange,
   onTotalCapChange,
   dcaAmountUsdc,
   onDcaAmountChange,
-  splitAmountUsdc,
-  onSplitAmountChange,
-  recipients,
-  onRecipientBpsChange,
   spentUnits,
   totalCapUnits,
   remainingUnits,
@@ -88,9 +71,9 @@ export function JudgeConsolePage({
   calldataPreview,
   auditEvents,
   isExecuting,
-  onExecuteActiveTab,
+  onExecuteDca,
   onPresetSafeDca,
-  onPresetSafeSplit,
+  onPresetMicroDca,
   onPresetOverCapAttack,
   onPresetUnlistedAttack,
   onRevokeSession,
@@ -123,7 +106,7 @@ export function JudgeConsolePage({
       id: "safe-flows",
       num: "01",
       title: "Run Safe Flows",
-      desc: "Execute Auto-DCA or 3-Way Split within configured USDC caps.",
+      desc: "Execute bounded USDC -> CELO Auto-DCA swaps within configured caps.",
       done: hasSafeRun,
     },
     {
@@ -137,7 +120,7 @@ export function JudgeConsolePage({
       id: "mainnet-proof",
       num: "03",
       title: "Inspect ERC-8021 & Mainnet",
-      desc: "Verify celo_0518175d3efe calldata & 3 live Celoscan receipts.",
+      desc: "Verify celo_0518175d3efe calldata & live Celoscan receipts.",
       done: true,
     },
     {
@@ -290,7 +273,7 @@ export function JudgeConsolePage({
                 >
                   <span className="flex items-center gap-2 text-xs font-semibold text-[#15171c]">
                     <ArrowDownRight className="h-4 w-4 text-[#21744e]" />
-                    <span>Safe Auto-DCA ($25 USDC → CELO)</span>
+                    <span>Safe Auto-DCA ($25 USDC -&gt; CELO)</span>
                   </span>
                   <span className="flex shrink-0 items-center -space-x-1">
                     <UsdcLogo size={16} className="ring-1 ring-[#ffffff]" />
@@ -303,15 +286,18 @@ export function JudgeConsolePage({
                   disabled={isExecuting}
                   onClick={() => {
                     setActiveStep("safe-flows");
-                    onPresetSafeSplit();
+                    onPresetMicroDca();
                   }}
                   className="flex w-full cursor-pointer items-center justify-between gap-2 rounded-[10px] border border-[#e3e6eb] bg-[#ffffff] px-3.5 py-2.5 text-left transition-colors hover:border-[#10372a] disabled:opacity-60"
                 >
                   <span className="flex items-center gap-2 text-xs font-semibold text-[#15171c]">
-                    <GitFork className="h-4 w-4 text-[#10372a]" />
-                    <span>3-Way Revenue Split ($40 USDC)</span>
+                    <ArrowDownRight className="h-4 w-4 text-[#10372a]" />
+                    <span>Micro Auto-DCA ($10 USDC -&gt; CELO)</span>
                   </span>
-                  <UsdcLogo size={16} />
+                  <span className="flex shrink-0 items-center -space-x-1">
+                    <UsdcLogo size={16} className="ring-1 ring-[#ffffff]" />
+                    <CeloLogo size={16} className="ring-1 ring-[#ffffff]" />
+                  </span>
                 </button>
               </div>
 
@@ -362,18 +348,12 @@ export function JudgeConsolePage({
 
             <GuardrailTerminal
               runMode={runMode}
-              activeTab={activeTab}
-              onTabChange={onTabChange}
               perTxCapUsdc={perTxCapUsdc}
               totalCapUsdc={totalCapUsdc}
               onPerTxCapChange={onPerTxCapChange}
               onTotalCapChange={onTotalCapChange}
               dcaAmountUsdc={dcaAmountUsdc}
               onDcaAmountChange={onDcaAmountChange}
-              splitAmountUsdc={splitAmountUsdc}
-              onSplitAmountChange={onSplitAmountChange}
-              recipients={recipients}
-              onRecipientBpsChange={onRecipientBpsChange}
               spentUnits={spentUnits}
               totalCapUnits={totalCapUnits}
               remainingUnits={remainingUnits}
@@ -382,7 +362,7 @@ export function JudgeConsolePage({
               lastResult={lastResult}
               lastResultSummary={lastResultSummary}
               calldataPreview={calldataPreview}
-              onExecuteActiveTab={onExecuteActiveTab}
+              onExecuteDca={onExecuteDca}
               onResetSession={onResetSession}
               isExecuting={isExecuting}
             />
@@ -405,7 +385,7 @@ export function JudgeConsolePage({
                 </span>
                 <h2 className="text-base font-semibold text-[#15171c]">
                   {revoked
-                    ? "Session Revoked — All Subsequent Calls Blocked"
+                    ? "Session Revoked: All Subsequent Calls Blocked"
                     : "Invalidate Delegated Session Key Instantly"}
                 </h2>
                 <p className="text-xs text-[#5d7166]">

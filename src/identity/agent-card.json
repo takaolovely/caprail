@@ -1,7 +1,7 @@
 {
   "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
-  "name": "CapRail — Guardrailed Auto-DCA & Revenue Splitter",
-  "description": "Non-custodial autonomous treasury agent on Celo Mainnet (42220) using Altana Session Keys with deterministic spend caps, target allowlists, 10000-bps split math, ERC-8021 attribution tag (celo_0518175d3efe), and 1-tx revocation.",
+  "name": "CapRail: Guardrailed Auto-DCA (USDC -> CELO)",
+  "description": "Non-custodial autonomous Auto-DCA agent on Celo Mainnet (42220) executing USDC -> CELO swaps via Uniswap V3 SwapRouter02 using Altana EIP-7702 Session Keys with deterministic spend caps, target allowlists, slippage guards, ERC-8021 attribution tag (celo_0518175d3efe), and 1-tx revocation.",
   "services": [
     {
       "name": "CLI",

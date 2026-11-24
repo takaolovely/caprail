@@ -143,7 +143,7 @@ export function formatWalletError(err: unknown): {
   }
 
   return {
-    message: "Unable to connect wallet. Please unlock your wallet extension and try again.",
+    message: "Unable to connect wallet. Open your wallet extension and try again.",
     isUserRejection: false,
   };
 }
@@ -151,7 +151,7 @@ export function formatWalletError(err: unknown): {
 export async function connectInjectedCeloWallet(): Promise<LiveWalletState> {
   if (!hasInjectedProvider() || window.ethereum === undefined) {
     throw new Error(
-      "No injected EVM wallet detected. Install Rabby, MetaMask, or Coinbase Wallet — or stay in zero-gas Sandbox mode.",
+      "No injected EVM wallet detected. Install Rabby, MetaMask, or Coinbase Wallet, or stay in zero-gas Sandbox mode.",
     );
   }
 

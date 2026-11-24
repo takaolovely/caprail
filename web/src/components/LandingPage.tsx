@@ -21,24 +21,15 @@ import {
   CAPRAIL_GITHUB_URL,
   CAPRAIL_METADATA,
 } from "../data/mainnetProof.js";
-import {
-  computeDeterministicSplits,
-  formatUsdcDisplay,
-  shortenAddress,
-  usdcNumberToBaseUnits,
-  type SplitRecipient,
-} from "../lib/sandboxBridge.js";
+import { shortenAddress } from "../lib/sandboxBridge.js";
 
 const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
-const SEGMENT_COLORS = ["#10372a", "#21744e", "#7ea590"] as const;
 
 const DIAGONAL_RIBBON_TEXT =
-  `✓ 0x9280…954a Granted · ✓ 0xcb30…1c27 Split 0.05 USDC · ✕ call_not_permitted Blocked · ✕ spend_limit_exceeded Blocked · ✓ 0x1455…d320 Revoked · ERC-8021 ${CAPRAIL_METADATA.attributionCode} · `;
+  `✓ 0x9280…954a Granted · ✓ 0xcb30…1c27 ERC-8021 0.05 USDC · ✕ call_not_permitted Blocked · ✕ spend_limit_exceeded Blocked · ✓ 0x1455…d320 Revoked · ERC-8021 ${CAPRAIL_METADATA.attributionCode} · `;
 
 interface LandingPageProps {
   onNavigate: (route: AppRoute) => void;
-  splitAmountUsdc: number;
-  recipients: readonly SplitRecipient[];
   revoked: boolean;
   onRevokeSession: () => void;
   onResetSession: () => void;
@@ -47,16 +38,11 @@ interface LandingPageProps {
 
 export function LandingPage({
   onNavigate,
-  splitAmountUsdc,
-  recipients,
   revoked,
   onRevokeSession,
   onResetSession,
   onOpenAgentCard,
 }: LandingPageProps) {
-  const splitBaseUnits = usdcNumberToBaseUnits(Math.max(0.01, splitAmountUsdc));
-  const computedPayouts = computeDeterministicSplits(splitBaseUnits, recipients);
-
   return (
     <div className="space-y-20">
       {/* =====================================================================
@@ -82,11 +68,12 @@ export function LandingPage({
               className="mt-6 space-y-4"
             >
               <h1 className="text-4xl font-medium tracking-[-0.04em] text-[#ffffff] sm:text-5xl md:text-6xl">
-                Autonomous agents, untangled.
+                Bounded Auto-DCA for autonomous agents.
               </h1>
               <p className="mx-auto max-w-2xl text-base leading-relaxed font-normal text-[#b7cdc2] sm:text-lg">
-                Delegate recurring Auto-DCA swaps and atomic revenue splits on Celo with
-                hard spending caps and a 1-tx kill-switch.
+                Delegate recurring USDC to CELO swaps on Celo Mainnet through
+                Altana EIP-7702 session keys, hard spend caps, slippage guards,
+                and a 1-tx kill-switch.
               </p>
             </motion.div>
 
@@ -131,7 +118,7 @@ export function LandingPage({
         {/* 03 · Scroll-Scrubbed Statement Headline + Sparkline Stats */}
         <ScrollStatementAndStatsSection />
 
-        {/* 04 · Auto-Playing 3-Step Split Showcase */}
+        {/* 04 · Auto-Playing 3-Step Showcase */}
         <AutoPlayingShowcaseSection />
 
         {/* ===================================================================
@@ -175,8 +162,9 @@ export function LandingPage({
               </div>
 
               <p className="mt-2 text-xs leading-relaxed text-[#5d7166]">
-                Every scheduled USDC → CELO swap passes cadence, slippage, allowlist,
-                and Altana EIP-7702 session caps before appending the ERC-8021 suffix.
+                Every scheduled USDC to CELO swap passes cadence, slippage floor,
+                router allowlist, and Altana EIP-7702 session caps before
+                appending the ERC-8021 suffix.
               </p>
 
               <div className="mt-5 rounded-[16px] border border-[#e3e6eb] bg-[#f2f4ef] p-4">
@@ -286,7 +274,7 @@ export function LandingPage({
             </article>
           </div>
 
-          {/* Row 2: 3 Equal Cards (Policy Code Block, 10,000-bps Split Bar, Mini Kill-Switch) */}
+          {/* Row 2: 3 Equal Cards (Policy Code Block, Liquidity-Gated Slippage Guard, Mini Kill-Switch) */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             {/* (a) Monospace Policy Code Block */}
             <article className="card-surface flex flex-col justify-between rounded-[24px] p-5">
@@ -299,9 +287,9 @@ export function LandingPage({
 {`spendCapPerTx: "50.00 USDC"
 totalSpendCap: "100.00 USDC"
 allowedTargets: [
-  USDC,
   SwapRouter02
 ]
+maxSlippageBps: 100
 attribution: "${CAPRAIL_METADATA.attributionCode}"`}
                 </pre>
               </div>
@@ -310,60 +298,42 @@ attribution: "${CAPRAIL_METADATA.attributionCode}"`}
               </p>
             </article>
 
-            {/* (b) 10,000-BPS Atomic Split Proportion Bar */}
+            {/* (b) Liquidity-Gated Pool & Slippage Guard */}
             <article className="card-surface flex flex-col justify-between rounded-[24px] p-5">
               <div>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-xs font-semibold text-[#15171c]">
-                    10,000 BPS Atomic Split
+                    Liquidity-Gated Pool Guard
                   </span>
                   <span className="rounded-full bg-[#e4f5eb] px-2 py-0.5 font-numeric text-[10px] font-semibold text-[#21744e]">
-                    EXACT
+                    0.01% TIER
                   </span>
                 </div>
 
-                <div className="mt-4 flex h-7 w-full overflow-hidden rounded-full border border-[#e3e6eb] bg-[#f2f4ef]">
-                  {computedPayouts.map((p, idx) => (
-                    <motion.div
-                      key={p.address}
-                      initial={false}
-                      animate={{ width: `${p.bps / 100}%` }}
-                      transition={{ duration: 0.42, ease: EASE_OUT_EXPO }}
-                      style={{
-                        backgroundColor: SEGMENT_COLORS[idx % SEGMENT_COLORS.length],
-                      }}
-                      className="flex items-center justify-center font-numeric text-[10px] font-semibold text-[#ffffff]"
-                    >
-                      {p.bps >= 1500 ? `${(p.bps / 100).toFixed(0)}%` : ""}
-                    </motion.div>
-                  ))}
-                </div>
+                <p className="mt-2 text-xs leading-relaxed text-[#5d7166]">
+                  Restricted strictly to the active Celo Mainnet USDC/CELO 0.01%
+                  Uniswap V3 pool. Live swaps quote on-chain via{" "}
+                  <span className="font-numeric text-[#15171c]">simulateContract</span>{" "}
+                  to enforce a 1.00% slippage floor.
+                </p>
 
-                <div className="mt-3 space-y-1.5 text-xs">
-                  {computedPayouts.map((p, idx) => (
-                    <div
-                      key={p.address}
-                      className="flex items-center justify-between font-numeric text-[11px]"
-                    >
-                      <span className="flex items-center gap-1.5 text-[#15171c]">
-                        <span
-                          className="h-2 w-2 rounded-full"
-                          style={{
-                            backgroundColor:
-                              SEGMENT_COLORS[idx % SEGMENT_COLORS.length],
-                          }}
-                        />
-                        {p.label}
-                      </span>
-                      <span className="text-[#5d7166]">
-                        {formatUsdcDisplay(p.amount)}
-                      </span>
-                    </div>
-                  ))}
+                <div className="mt-4 space-y-2 rounded-[12px] border border-[#e3e6eb] bg-[#f2f4ef] p-3 font-numeric text-[11px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#5d7166]">USDC / CELO (0.01%)</span>
+                    <span className="font-semibold text-[#21744e]">Active (~$12.4k)</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#5d7166]">USDC / WETH</span>
+                    <span className="font-semibold text-[#a8342a]">Blocked (L = 0)</span>
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#5d7166]">USDC / WBTC</span>
+                    <span className="font-semibold text-[#a8342a]">Blocked (No Pool)</span>
+                  </div>
                 </div>
               </div>
               <p className="mt-3 font-numeric text-[10px] text-[#5d7166]">
-                Deterministic remainder dust → recipient[0]
+                Verified on Celo 42220 · Nov 23, 2026
               </p>
             </article>
 
@@ -385,7 +355,7 @@ attribution: "${CAPRAIL_METADATA.attributionCode}"`}
                   </span>
                 </div>
                 <p className="mt-2 text-xs leading-relaxed text-[#5d7166]">
-                  Test revoking the shared Sandbox session right here—Page 2 and Page 3
+                  Test revoking the shared Sandbox session right here. Page 2 and Page 3
                   lock immediately.
                 </p>
               </div>
@@ -464,8 +434,8 @@ attribution: "${CAPRAIL_METADATA.attributionCode}"`}
             </h2>
 
             <p className="mx-auto max-w-xl text-sm leading-relaxed text-[#b7cdc2]">
-              Try the Jupiter-clean Auto-DCA &amp; Revenue Split app in zero-gas Sandbox
-              mode, or run full attack verifications in the Judge Console.
+              Configure bounded USDC to CELO Auto-DCA orders in zero-gas Sandbox
+              mode, or run negative guardrail tests in the Judge Console.
             </p>
 
             <div className="flex flex-wrap items-center justify-center gap-3 pt-2">

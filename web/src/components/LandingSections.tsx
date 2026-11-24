@@ -13,7 +13,6 @@ import {
   CheckCircle2,
   Cpu,
   Fingerprint,
-  GitFork,
   KeyRound,
   Layers,
   Lock,
@@ -32,7 +31,7 @@ const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
  * SECTION 01: INTERACTIVE LIVE GUARDRAIL BOARD PREVIEW ("One calm board")
  * ========================================================================== */
 
-type BoardFilter = "ALL" | "AUTO_DCA" | "REVENUE_SPLIT" | "BLOCKED";
+type BoardFilter = "ALL" | "AUTO_DCA" | "BLOCKED";
 
 interface BoardEventRow {
   id: string;
@@ -49,7 +48,7 @@ const BOARD_EVENTS: readonly BoardEventRow[] = [
   {
     id: "ev-1",
     category: "AUTO_DCA",
-    title: "Auto-DCA · USDC → CELO",
+    title: "Auto-DCA · USDC -> CELO",
     detail: "SwapRouter02 · slippage 42 bps · within $50/tx cap",
     amount: "$25.00",
     status: "APPROVED",
@@ -58,12 +57,12 @@ const BOARD_EVENTS: readonly BoardEventRow[] = [
   },
   {
     id: "ev-2",
-    category: "REVENUE_SPLIT",
-    title: "3-Way Atomic Revenue Split",
-    detail: "Treasury 50% · Collaborator 30% · Ops 20% (10,000 bps)",
-    amount: "$40.00",
+    category: "AUTO_DCA",
+    title: "Scheduled Daily Auto-DCA",
+    detail: "SwapRouter02 · on-chain quote floor 99.0% · 0.01% pool",
+    amount: "$20.00",
     status: "APPROVED",
-    tag: "0xcb30…1c27",
+    tag: "ERC-8021 ✓",
     time: "1m ago",
   },
   {
@@ -104,21 +103,15 @@ const BOARD_METRICS: Record<
 > = {
   ALL: [
     { label: "Total Evaluated", value: 5 },
-    { label: "Approved Volume", value: 80, prefix: "$", suffix: ".00" },
+    { label: "Approved Volume", value: 60, prefix: "$", suffix: ".00" },
     { label: "Attacks Blocked", value: 2 },
     { label: "Policy Adherence", value: 100, suffix: "%" },
   ],
   AUTO_DCA: [
-    { label: "DCA Runs", value: 2 },
-    { label: "Swapped Volume", value: 40, prefix: "$", suffix: ".00" },
-    { label: "Avg Slippage", value: 42, suffix: " bps" },
+    { label: "DCA Runs", value: 3 },
+    { label: "Swapped Volume", value: 60, prefix: "$", suffix: ".00" },
+    { label: "Max Slippage", value: 100, suffix: " bps" },
     { label: "Router Guard", value: 100, suffix: "%" },
-  ],
-  REVENUE_SPLIT: [
-    { label: "Atomic Batches", value: 1 },
-    { label: "Distributed USDC", value: 40, prefix: "$", suffix: ".00" },
-    { label: "Allocation Precision", value: 10000, suffix: " bps" },
-    { label: "Dust Loss", value: 0, suffix: " wei" },
   ],
   BLOCKED: [
     { label: "Blocked Intents", value: 2 },
@@ -192,7 +185,7 @@ export function LiveBoardPreviewSection() {
         </div>
 
         <h2 className="max-w-3xl text-2xl font-medium tracking-[-0.03em] sm:text-4xl">
-          <span className="text-[#15171c]">Every swap, split, and blocked attack in one ledger.</span>{" "}
+          <span className="text-[#15171c]">Every Auto-DCA swap and blocked attack in one ledger.</span>{" "}
           <span className="text-[#5d7166]">
             Filter live agent telemetry before a single dollar leaves your wallet.
           </span>
@@ -215,8 +208,7 @@ export function LiveBoardPreviewSection() {
               {(
                 [
                   { id: "ALL", label: "All Events", count: 5, icon: Activity },
-                  { id: "AUTO_DCA", label: "Auto-DCA", count: 2, icon: Repeat },
-                  { id: "REVENUE_SPLIT", label: "Revenue Split", count: 1, icon: GitFork },
+                  { id: "AUTO_DCA", label: "Auto-DCA Swaps", count: 3, icon: Repeat },
                   { id: "BLOCKED", label: "Blocked Attacks", count: 2, icon: ShieldAlert },
                 ] as const
               ).map((item) => {
@@ -365,7 +357,7 @@ const MARQUEE_ROW_1 = [
   { kind: "dark" as const, label: "Altana EIP-7702", sub: "Session Keys", icon: KeyRound },
   { kind: "dots" as const, label: "Zero Custody", sub: "Owner Admin" },
   { kind: "dark" as const, label: "Uniswap V3", sub: "SwapRouter02", brand: "uniswap" as const },
-  { kind: "dots" as const, label: "10,000 BPS", sub: "Atomic Math" },
+  { kind: "dots" as const, label: "100 BPS", sub: "Slippage Guard" },
   { kind: "dark" as const, label: "Native USDC", sub: "0xcebA…118C", brand: "usdc" as const },
   { kind: "dots" as const, label: "1-Tx Revoke", sub: "Kill-Switch" },
 ];
@@ -484,9 +476,9 @@ const STATEMENT_TOKENS: readonly StatementToken[] = [
   { text: "in" },
   { text: "→" },
   { text: "KeyStore,", chip: "KeyStore" },
-  { text: "payouts" },
+  { text: "swaps" },
   { text: "on" },
-  { text: "→" },
+  { text: "->" },
   { text: "Celo.", chip: "Celo" },
   { text: "CapRail" },
   { text: "enforces" },
@@ -543,15 +535,15 @@ const SPARKLINE_STATS = [
     bars: [32, 48, 42, 64, 58, 82, 76, 96],
   },
   {
-    value: "10,000",
-    label: "BPS Precision",
-    sub: "Exact atomic BigInt split",
+    value: "100 bps",
+    label: "Slippage Guard",
+    sub: "On-chain simulateContract floor",
     bars: [60, 75, 68, 85, 80, 92, 88, 100],
   },
   {
     value: "3",
     label: "Live Mainnet Txs",
-    sub: "Grant, Split & 1-Tx Revoke",
+    sub: "Grant, ERC-8021 Tx & 1-Tx Revoke",
     bars: [24, 38, 52, 44, 70, 84, 78, 95],
   },
   {
@@ -655,7 +647,7 @@ export function ScrollStatementAndStatsSection() {
 }
 
 /* ============================================================================
- * SECTION 04: AUTO-PLAYING 3-STEP SPLIT SHOWCASE ("Watch one agent stay bounded")
+ * SECTION 04: AUTO-PLAYING 3-STEP SHOWCASE ("Watch one agent stay bounded")
  * ========================================================================== */
 
 const SHOWCASE_STEPS = [
@@ -676,7 +668,7 @@ const SHOWCASE_STEPS = [
   {
     num: "03",
     title: "Execute or 1-Tx Revoke",
-    desc: "Automate DCA & 10,000-bps splits with ERC-8021 tags—or pull the 1-tx kill-switch anytime.",
+    desc: "Run scheduled USDC to CELO swaps with ERC-8021 tags, or pull the 1-tx kill-switch anytime.",
     chip: "✕ Revoke Triggered · SESSION_REVOKED",
     chipTone: "alert" as const,
   },
@@ -856,7 +848,7 @@ export function AutoPlayingShowcaseSection() {
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#5d7166]">Scoped Selector</span>
-                    <span className="text-[#21744e]">transfer(address,uint256)</span>
+                    <span className="text-[#21744e]">exactInputSingle(0x04e45aaf)</span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-[#5d7166]">Mainnet Grant Tx</span>
@@ -886,7 +878,7 @@ export function AutoPlayingShowcaseSection() {
                 </div>
                 <div className="space-y-2.5 text-xs">
                   <div className="flex items-center justify-between rounded-[10px] bg-[#e4f5eb] px-3.5 py-2.5 text-[#21744e]">
-                    <span className="font-medium">0.05 USDC Split Settled (ERC-8021)</span>
+                    <span className="font-medium">0.05 USDC Attribution Tx Settled (ERC-8021)</span>
                     <span className="font-numeric font-semibold">0xcb30…1c27</span>
                   </div>
                   <div className="flex items-center justify-between rounded-[10px] bg-[#ffece9] px-3.5 py-2.5 text-[#a8342a]">

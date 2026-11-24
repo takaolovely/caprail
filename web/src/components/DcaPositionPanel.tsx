@@ -404,7 +404,7 @@ export function DcaPositionPanel({
             {revoked ? (
               <>
                 <Lock className="h-3.5 w-3.5" />
-                <span>Session Revoked — Next Fill Blocked</span>
+                <span>Session Revoked: Next Fill Blocked</span>
               </>
             ) : isExecuting ? (
               <span>Simulating Bounded Fill…</span>

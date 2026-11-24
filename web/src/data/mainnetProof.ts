@@ -32,11 +32,11 @@ export const VERIFIED_MAINNET_PROOFS: readonly MainnetProofTx[] = [
     tone: "neutral",
   },
   {
-    id: "split",
+    id: "attribution-tx",
     step: "02",
-    title: "Attributed Revenue Split",
+    title: "ERC-8021 Attribution Transfer",
     detail:
-      "0.05 USDC live payout · historical ERC-8021 proof tx on Celo 42220 (runtime upgraded to celo_0518175d3efe)",
+      "0.05 USDC live verification transfer on Celo 42220 (runtime upgraded to celo_0518175d3efe)",
     txHash: "0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27",
     celoscanUrl:
       "https://celoscan.io/tx/0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27",
@@ -47,7 +47,7 @@ export const VERIFIED_MAINNET_PROOFS: readonly MainnetProofTx[] = [
     id: "revoke",
     step: "03",
     title: "1-Tx Emergency Revoke",
-    detail: "Instant KeyStore invalidation — subsequent session calls rejected",
+    detail: "Instant KeyStore invalidation: subsequent session calls rejected",
     txHash: "0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320",
     celoscanUrl:
       "https://celoscan.io/tx/0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320",

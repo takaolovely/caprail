@@ -78,7 +78,7 @@ async function main(): Promise<void> {
       : undefined;
 
   console.log("====================================================================");
-  console.log(" CapRail — Celo Mainnet (42220) Live Altana Session Key Test Runner");
+  console.log(" CapRail | Celo Mainnet (42220) Live Altana Session Key Test Runner");
   console.log("====================================================================");
   console.log(
     `Mode               : ${confirmedMainnet ? "CELO_MAINNET (LIVE EXECUTION)" : "PREVIEW ONLY (no --confirm-mainnet flag)"}`,
@@ -95,7 +95,7 @@ async function main(): Promise<void> {
   console.log(`Total Spend Cap    : ${formatUsdc(MICRO_TOTAL_CAP)} (${MICRO_TOTAL_CAP.toString()})`);
   console.log(`Auto-Fund Target   : ${formatUsdc(AUTO_FUND_TARGET_USDC)} (${AUTO_FUND_TARGET_USDC.toString()})`);
   console.log(`Session TTL        : ${SESSION_TTL_SECONDS}s (1 hour)`);
-  console.log(`Micro Split Payout : ${formatUsdc(MICRO_PAYOUT_AMOUNT)} -> recipient`);
+  console.log(`Verification Tx    : ${formatUsdc(MICRO_PAYOUT_AMOUNT)} -> recipient (ERC-8021 check)`);
   console.log(`ERC-8021 Tag       : ${attributionCode}`);
   console.log(
     `Estimated Cost     : ~0.05 USDC transfer + Celo gas/Altana KeyStore fee (paid in CELO/USDC)`,
@@ -334,37 +334,37 @@ async function main(): Promise<void> {
 
   // Wrap Steps 3-4 in try/finally so emergency revoke runs even if a test throws
   try {
-    // 3) Positive test: 1x Micro Revenue Split (0.05 USDC -> TEST_RECIPIENT_ADDRESS)
+    // 3) Positive test: 1x ERC-8021 attribution verification transfer (0.05 USDC -> TEST_RECIPIENT_ADDRESS)
     console.log(
-      `\n[Step 3/5] Executing micro Revenue Split (${formatUsdc(MICRO_PAYOUT_AMOUNT)} -> ${recipientAddress})...`,
+      `\n[Step 3/5] Executing ERC-8021 attribution verification transfer (${formatUsdc(MICRO_PAYOUT_AMOUNT)} -> ${recipientAddress})...`,
     );
-    const splitCall = encodeAttributedErc20Transfer({
+    const verifyCall = encodeAttributedErc20Transfer({
       token: CELO_MAINNET_TOKENS.USDC,
       recipient: recipientAddress,
       amount: MICRO_PAYOUT_AMOUNT,
       attributionCode,
     });
 
-    const splitResult = await adapter.executeGuarded({
+    const verifyResult = await adapter.executeGuarded({
       policyTarget: CELO_MAINNET_TOKENS.USDC,
-      to: splitCall.to,
+      to: verifyCall.to,
       value: 0n,
-      data: splitCall.data,
+      data: verifyCall.data,
       amount: MICRO_PAYOUT_AMOUNT,
       token: CELO_MAINNET_TOKENS.USDC,
-      purpose: "CapRail live-test micro revenue split (0.05 USDC)",
+      purpose: "CapRail live-test ERC-8021 attribution verification transfer (0.05 USDC)",
     });
 
-    console.log(`  Status         : ${splitResult.status}`);
-    console.log(`  Calls ID       : ${splitResult.callsId ?? "n/a"}`);
-    console.log(`  TxHash         : ${splitResult.txHash ?? "n/a"}`);
-    console.log(`  Celoscan       : ${celoscanTxUrl(splitResult.txHash)}`);
-    console.log(`  ERC-8021 Tag   : ${splitCall.attributionCode} (verified=${splitCall.decodedAttribution.codes.includes(attributionCode)})`);
-    console.log(`  Remaining Cap  : ${formatUsdc(splitResult.remainingTotalCap)}`);
+    console.log(`  Status         : ${verifyResult.status}`);
+    console.log(`  Calls ID       : ${verifyResult.callsId ?? "n/a"}`);
+    console.log(`  TxHash         : ${verifyResult.txHash ?? "n/a"}`);
+    console.log(`  Celoscan       : ${celoscanTxUrl(verifyResult.txHash)}`);
+    console.log(`  ERC-8021 Tag   : ${verifyCall.attributionCode} (verified=${verifyCall.decodedAttribution.codes.includes(attributionCode)})`);
+    console.log(`  Remaining Cap  : ${formatUsdc(verifyResult.remainingTotalCap)}`);
 
-    if (splitResult.status !== "APPROVED") {
+    if (verifyResult.status !== "APPROVED") {
       throw new Error(
-        `Positive micro split failed: ${splitResult.reasonCode} — ${splitResult.reason}`,
+        `Positive ERC-8021 verification transfer failed: ${verifyResult.reasonCode}: ${verifyResult.reason}`,
       );
     }
 
@@ -460,7 +460,7 @@ async function main(): Promise<void> {
     // 5) Emergency 1-tx Revoke (always runs so no live session key is left dangling)
     console.log("\n[Step 5/5] Executing 1-tx emergency session revoke on Celo Mainnet...");
     const revokeRes = await adapter.revokeSession(
-      "CapRail live-test completed — emergency 1-tx revoke",
+      "CapRail live-test completed: emergency 1-tx revoke",
     );
     console.log(`  Revoked        : ${String(revokeRes.revoked)}`);
     console.log(`  Key ID         : ${revokeRes.keyId ?? "n/a"}`);

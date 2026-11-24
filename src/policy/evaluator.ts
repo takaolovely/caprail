@@ -1,10 +1,5 @@
 import type { Address } from "viem";
-import {
-  normalizeAddress,
-  TOTAL_SPLIT_BPS,
-  type SessionPolicy,
-  type SplitRecipient,
-} from "./schemas.js";
+import { normalizeAddress, type SessionPolicy } from "./schemas.js";
 
 export type GuardrailDenialCode =
   | "SESSION_REVOKED"
@@ -103,51 +98,4 @@ export function evaluateSessionGuardrails(
   }
 
   return { allowed: true };
-}
-
-export interface ComputedSplitPayout {
-  label: string;
-  address: Address;
-  bps: number;
-  amount: bigint;
-}
-
-/**
- * Deterministically distributes `totalAmount` across recipients whose bps sum to 10000.
- * Remainder dust (at most recipients.length - 1 base units) is assigned deterministically
- * to the first recipient so sum(payouts) === totalAmount with zero floating-point drift.
- */
-export function computeDeterministicSplits(
-  totalAmount: bigint,
-  recipients: readonly SplitRecipient[],
-): ComputedSplitPayout[] {
-  if (totalAmount <= 0n) {
-    throw new Error("totalAmount must be strictly greater than 0");
-  }
-  if (recipients.length === 0) {
-    throw new Error("recipients must not be empty");
-  }
-
-  const bpsSum = recipients.reduce((acc, r) => acc + r.bps, 0);
-  if (bpsSum !== TOTAL_SPLIT_BPS) {
-    throw new Error(
-      `Recipient bps must sum to ${TOTAL_SPLIT_BPS}, received ${bpsSum}`,
-    );
-  }
-
-  const payouts: ComputedSplitPayout[] = recipients.map((r) => ({
-    label: r.label,
-    address: r.address,
-    bps: r.bps,
-    amount: (totalAmount * BigInt(r.bps)) / BigInt(TOTAL_SPLIT_BPS),
-  }));
-
-  const allocated = payouts.reduce((acc, p) => acc + p.amount, 0n);
-  const dust = totalAmount - allocated;
-  const first = payouts[0];
-  if (dust > 0n && first !== undefined) {
-    first.amount += dust;
-  }
-
-  return payouts;
 }

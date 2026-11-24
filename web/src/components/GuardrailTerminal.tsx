@@ -16,28 +16,19 @@ import {
   formatUsdcDisplay,
   shortenAddress,
   type CalldataPreview,
-  type SplitRecipient,
   type WalletExecutionResult,
 } from "../lib/sandboxBridge.js";
-
-export type TerminalTab = "AUTO_DCA" | "REVENUE_SPLIT";
 
 const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
 
 interface GuardrailTerminalProps {
   runMode: AppRunMode;
-  activeTab: TerminalTab;
-  onTabChange: (tab: TerminalTab) => void;
   perTxCapUsdc: number;
   totalCapUsdc: number;
   onPerTxCapChange: (val: number) => void;
   onTotalCapChange: (val: number) => void;
   dcaAmountUsdc: number;
   onDcaAmountChange: (val: number) => void;
-  splitAmountUsdc: number;
-  onSplitAmountChange: (val: number) => void;
-  recipients: readonly SplitRecipient[];
-  onRecipientBpsChange: (index: number, nextBps: number) => void;
   spentUnits: bigint;
   totalCapUnits: bigint;
   remainingUnits: bigint;
@@ -46,25 +37,19 @@ interface GuardrailTerminalProps {
   lastResult: WalletExecutionResult | null;
   lastResultSummary: string | null;
   calldataPreview: CalldataPreview;
-  onExecuteActiveTab: () => void;
+  onExecuteDca: () => void;
   onResetSession?: () => void;
   isExecuting: boolean;
 }
 
 export function GuardrailTerminal({
   runMode,
-  activeTab,
-  onTabChange,
   perTxCapUsdc,
   totalCapUsdc,
   onPerTxCapChange,
   onTotalCapChange,
   dcaAmountUsdc,
   onDcaAmountChange,
-  splitAmountUsdc,
-  onSplitAmountChange,
-  recipients,
-  onRecipientBpsChange,
   spentUnits,
   totalCapUnits,
   remainingUnits,
@@ -73,7 +58,7 @@ export function GuardrailTerminal({
   lastResult,
   lastResultSummary,
   calldataPreview,
-  onExecuteActiveTab,
+  onExecuteDca,
   onResetSession,
   isExecuting,
 }: GuardrailTerminalProps) {
@@ -87,7 +72,6 @@ export function GuardrailTerminal({
         )
       : 0;
   const usedPct = Math.max(0, Math.min(100, 100 - remainingPct));
-  const totalBps = recipients.reduce((acc, r) => acc + r.bps, 0);
 
   return (
     <motion.section
@@ -229,184 +213,77 @@ export function GuardrailTerminal({
           </div>
         </div>
 
-        {/* STEP 2 · CHOOSE STRATEGY */}
+        {/* STEP 2 · AUTO-DCA STRATEGY */}
         <div className="space-y-3">
           <div className="flex items-center justify-between">
             <span className="font-numeric text-[10px] font-semibold tracking-[0.06em] text-[#5d7166] uppercase">
-              STEP 2 · CHOOSE STRATEGY
+              STEP 2 · AUTO-DCA SWAP
             </span>
             <span className="inline-flex items-center gap-1.5 font-numeric text-[10px] text-[#5d7166]">
-              {activeTab === "AUTO_DCA" ? (
-                <>
-                  <UniswapLogo size={13} />
-                  <span>Uniswap V3 SwapRouter02</span>
-                </>
-              ) : (
-                <>
-                  <UsdcLogo size={13} />
-                  <span>{totalBps.toLocaleString()} bps exact</span>
-                </>
-              )}
+              <UniswapLogo size={13} />
+              <span>Uniswap V3 SwapRouter02</span>
             </span>
           </div>
 
-          <div className="relative grid grid-cols-2 rounded-full border border-[#e3e6eb] bg-[#f2f4ef] p-1">
-            {(
-              [
-                { id: "AUTO_DCA", label: "Auto-DCA Swap" },
-                { id: "REVENUE_SPLIT", label: "Revenue Splitter (100%)" },
-              ] as const
-            ).map((tab) => {
-              const active = activeTab === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  onClick={() => onTabChange(tab.id)}
-                  className={`relative z-10 cursor-pointer rounded-full px-3 py-2 text-xs font-medium transition-colors ${
-                    active ? "text-[#ffffff]" : "text-[#5d7166] hover:text-[#15171c]"
-                  }`}
-                >
-                  {active && (
-                    <motion.span
-                      layoutId="judge-terminal-tab"
-                      transition={{ duration: 0.34, ease: EASE_OUT_EXPO }}
-                      className="absolute inset-0 -z-10 rounded-full bg-[#10372a]"
-                    />
-                  )}
-                  {tab.label}
-                </button>
-              );
-            })}
+          <div className="space-y-3 rounded-[16px] border border-[#e3e6eb] bg-[#ffffff] p-4">
+            <div className="flex items-center justify-between text-xs">
+              <label
+                htmlFor="slider-dca-amt"
+                className="inline-flex items-center gap-1.5 font-medium text-[#15171c]"
+              >
+                <span>Trade Amount</span>
+                <span className="inline-flex items-center gap-1 rounded-full border border-[#e3e6eb] bg-[#f2f4ef] px-2 py-0.5 font-numeric text-[10px] text-[#5d7166]">
+                  <UsdcLogo size={12} />
+                  <span>USDC</span>
+                  <span>-&gt;</span>
+                  <CeloLogo size={12} />
+                  <span>CELO</span>
+                </span>
+              </label>
+              <span className="font-numeric font-semibold text-[#15171c]">
+                ${dcaAmountUsdc.toFixed(2)} USDC
+              </span>
+            </div>
+            <input
+              id="slider-dca-amt"
+              type="range"
+              min={5}
+              max={100}
+              step={5}
+              value={dcaAmountUsdc}
+              disabled={revoked}
+              onChange={(e) => onDcaAmountChange(Number(e.target.value))}
+              className="caprail-slider w-full"
+            />
+            <div className="flex flex-wrap items-center justify-between gap-2 font-numeric text-[11px] text-[#5d7166]">
+              <span className="inline-flex items-center gap-1.5">
+                <UniswapLogo size={13} />
+                <span>
+                  Router: SwapRouter02 ({shortenAddress(calldataPreview.targetContract)})
+                </span>
+              </span>
+              <span>Slippage Guard: 1.00% (100 bps)</span>
+            </div>
           </div>
-
-          {activeTab === "AUTO_DCA" ? (
-            <div className="space-y-3 rounded-[16px] border border-[#e3e6eb] bg-[#ffffff] p-4">
-              <div className="flex items-center justify-between text-xs">
-                <label
-                  htmlFor="slider-dca-amt"
-                  className="inline-flex items-center gap-1.5 font-medium text-[#15171c]"
-                >
-                  <span>Trade Amount</span>
-                  <span className="inline-flex items-center gap-1 rounded-full border border-[#e3e6eb] bg-[#f2f4ef] px-2 py-0.5 font-numeric text-[10px] text-[#5d7166]">
-                    <UsdcLogo size={12} />
-                    <span>USDC</span>
-                    <span>→</span>
-                    <CeloLogo size={12} />
-                    <span>CELO</span>
-                  </span>
-                </label>
-                <span className="font-numeric font-semibold text-[#15171c]">
-                  ${dcaAmountUsdc.toFixed(2)} USDC
-                </span>
-              </div>
-              <input
-                id="slider-dca-amt"
-                type="range"
-                min={5}
-                max={100}
-                step={5}
-                value={dcaAmountUsdc}
-                disabled={revoked}
-                onChange={(e) => onDcaAmountChange(Number(e.target.value))}
-                className="caprail-slider w-full"
-              />
-              <div className="flex flex-wrap items-center justify-between gap-2 font-numeric text-[11px] text-[#5d7166]">
-                <span className="inline-flex items-center gap-1.5">
-                  <UniswapLogo size={13} />
-                  <span>
-                    Router: SwapRouter02 ({shortenAddress(calldataPreview.targetContract)})
-                  </span>
-                </span>
-                <span>Slippage Guard: 1.00% (100 bps)</span>
-              </div>
-            </div>
-          ) : (
-            <div className="space-y-3 rounded-[16px] border border-[#e3e6eb] bg-[#ffffff] p-4">
-              <div className="flex items-center justify-between text-xs">
-                <label
-                  htmlFor="slider-split-amt"
-                  className="inline-flex items-center gap-1.5 font-medium text-[#15171c]"
-                >
-                  <UsdcLogo size={14} />
-                  <span>Payout Amount (USDC)</span>
-                </label>
-                <span className="font-numeric font-semibold text-[#15171c]">
-                  ${splitAmountUsdc.toFixed(2)} USDC
-                </span>
-              </div>
-              <input
-                id="slider-split-amt"
-                type="range"
-                min={5}
-                max={100}
-                step={5}
-                value={splitAmountUsdc}
-                disabled={revoked}
-                onChange={(e) => onSplitAmountChange(Number(e.target.value))}
-                className="caprail-slider w-full"
-              />
-              <div className="space-y-2 pt-1">
-                {recipients.map((r, idx) => (
-                  <div
-                    key={r.address}
-                    className="grid grid-cols-12 items-center gap-2 text-xs"
-                  >
-                    <span className="col-span-5 truncate font-medium text-[#15171c]">
-                      {r.label}
-                    </span>
-                    <div className="col-span-4">
-                      <input
-                        type="range"
-                        min={500}
-                        max={8500}
-                        step={100}
-                        value={r.bps}
-                        disabled={revoked || idx === recipients.length - 1}
-                        onChange={(e) =>
-                          onRecipientBpsChange(idx, Number(e.target.value))
-                        }
-                        className="caprail-slider w-full"
-                      />
-                    </div>
-                    <span className="col-span-3 text-right font-numeric text-[11px] text-[#5d7166]">
-                      {(r.bps / 100).toFixed(0)}%{" "}
-                      <span className="text-[10px]">({r.bps})</span>
-                    </span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between border-t border-[#e3e6eb] pt-2 font-numeric text-[11px]">
-                  <span className="text-[#5d7166]">Allocation Check</span>
-                  <span className="font-semibold text-[#21744e]">
-                    100.00% ({totalBps.toLocaleString()} bps)
-                  </span>
-                </div>
-              </div>
-            </div>
-          )}
         </div>
 
         {/* Execute CTA */}
         <button
           type="button"
-          onClick={onExecuteActiveTab}
+          onClick={onExecuteDca}
           disabled={revoked || isExecuting}
           className="flex h-12 w-full cursor-pointer items-center justify-center gap-2 rounded-full bg-[#10372a] px-5 text-sm font-semibold text-[#ffffff] transition-colors hover:bg-[#17483a] disabled:cursor-not-allowed disabled:bg-[#e3e6eb] disabled:text-[#5d7166]"
         >
           {revoked ? (
             <>
               <Lock className="h-4 w-4" />
-              <span>Session Revoked — Execution Locked</span>
+              <span>Session Revoked: Execution Locked</span>
             </>
           ) : isExecuting ? (
             <span>Evaluating Guardrails &amp; Encoding Calldata…</span>
           ) : (
             <>
-              <span>
-                {activeTab === "AUTO_DCA"
-                  ? `Execute Guarded Auto-DCA ($${dcaAmountUsdc.toFixed(2)} USDC)`
-                  : `Execute 3-Way Revenue Split ($${splitAmountUsdc.toFixed(2)} USDC)`}
-              </span>
+              <span>Execute Guarded Auto-DCA (${dcaAmountUsdc.toFixed(2)} USDC)</span>
               <ArrowRight className="h-4 w-4" />
             </>
           )}
@@ -455,7 +332,7 @@ export function GuardrailTerminal({
                   lastResult.reasonCode === "EXCEEDS_TOTAL_CAP" && (
                     <div className="mt-1.5 flex flex-wrap items-center gap-2 rounded-[10px] border border-[#ff6a5c]/30 bg-[#ffffff]/80 px-2.5 py-1.5 text-[11px] text-[#15171c]">
                       <span>
-                        Remaining sandbox budget is low — click{" "}
+                        Remaining sandbox budget is low. Click{" "}
                         <strong>Reset Sandbox</strong> to restore the $
                         {totalCapUsdc} demo allowance.
                       </span>
@@ -541,11 +418,7 @@ export function GuardrailTerminal({
                     <span className="font-semibold text-[#15171c]">
                       {calldataPreview.functionLabel}
                     </span>
-                    <span>
-                      {calldataPreview.calls.length}{" "}
-                      {calldataPreview.calls.length === 1 ? "call" : "batched calls"} ·
-                      selector {calldataPreview.selector}
-                    </span>
+                    <span>selector {calldataPreview.selector}</span>
                   </div>
 
                   <div className="space-y-2.5">

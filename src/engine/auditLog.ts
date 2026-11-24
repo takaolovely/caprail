@@ -6,7 +6,7 @@ export type AuditStatus = "APPROVED" | "BLOCKED" | "REVOKED";
 export interface AuditEvent {
   timestamp: string;
   mode: ExecutionMode;
-  engine: "AUTO_DCA" | "REVENUE_SPLITTER" | "SESSION_CONTROL";
+  engine: "AUTO_DCA" | "SESSION_CONTROL";
   action: string;
   status: AuditStatus;
   reasonCode?: string | undefined;

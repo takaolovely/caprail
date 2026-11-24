@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "CapRail — Guardrailed Auto-DCA & Revenue Splitter powered by Altana Agent Wallet Session Keys on Celo Mainnet",
+  "description": "CapRail: Guardrailed Auto-DCA (USDC -> CELO) powered by Altana Agent Wallet Session Keys on Celo Mainnet",
   "repository": {
     "type": "git",
     "url": "https://github.com/takaolovely/caprail.git"
