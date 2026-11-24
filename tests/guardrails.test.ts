@@ -31,6 +31,7 @@ import {
   encodeAttributedUniswapV3Swap,
   ERC20_ABI,
   ERC20_TRANSFER_SELECTOR,
+  EXACT_INPUT_SINGLE_SELECTOR,
   isInvalidAuthItemNonceError,
   LocalSessionSimulator,
   resolveOrProvisionAltanaWallet,
@@ -298,15 +299,34 @@ describe("Real SDK Integration Helpers (Altana, ERC-8021 Attribution, ERC-8004)"
     expect(decoded?.codes).toContain("celo_0518175d3efe");
   });
 
-  it("initializes @altananetwork/sdk client for Celo Mainnet (42220) and maps SessionPermissions", () => {
+  it("derives EXACT_INPUT_SINGLE_SELECTOR programmatically as 0x04e45aaf (never V1 0x414bf389) and locks SessionPermissions", () => {
+    expect(EXACT_INPUT_SINGLE_SELECTOR).toBe("0x04e45aaf");
+    expect(EXACT_INPUT_SINGLE_SELECTOR).not.toBe("0x414bf389");
+    expect(UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR).toBe("0x04e45aaf");
+
     const client = createReadOnlyAltanaCeloClient();
     expect(client.defaultChainId).toBe(42220);
     expect(CELO.chainId).toBe(42220);
 
     const perms = buildAltanaSessionPermissions(makePolicy(), "day");
     expect(perms.calls).toHaveLength(1);
-    const firstCall = perms.calls?.[0];
-    expect(firstCall && "to" in firstCall ? firstCall.to : undefined).toBe(ROUTER);
+    expect(perms.calls?.[0]).toEqual({
+      to: ROUTER,
+      signature: "0x04e45aaf",
+    });
+
+    // Zero { to }-only catch-all grants and zero USDC / approve (0x095ea7b3) entries
+    for (const entry of perms.calls ?? []) {
+      expect("signature" in entry && typeof entry.signature === "string").toBe(true);
+      if ("signature" in entry && typeof entry.signature === "string") {
+        expect(entry.signature).toMatch(/^0x[0-9a-f]{8}$/);
+        expect(entry.signature.toLowerCase()).not.toBe("0x095ea7b3");
+      }
+      if ("to" in entry && typeof entry.to === "string") {
+        expect(entry.to.toLowerCase()).not.toBe(USDC.toLowerCase());
+      }
+    }
+
     expect(perms.spend?.[0]?.limit).toBe(100_000_000n);
     expect(perms.spend?.[0]?.token).toBe(USDC);
   });

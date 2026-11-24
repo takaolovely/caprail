@@ -44,8 +44,8 @@ The Agent Execution Plane (`src/cli/dca-tick.ts`, documented in [`SKILL.md`](./S
 * Live Celo Mainnet (`Chain ID 42220`) execution runs through `AltanaLiveAdapter` backed by `@altananetwork/sdk` (`v1.1.0`), Altana's Celo KeyStore (`0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c`), `viem`, and `@celo/attribution-tags` (`v0.5.0`, ERC-8021).
 
 ### 2. Enforcement Layer: On-Chain vs Off-Chain
-* **On-chain enforcement (Altana EIP-7702 Session Key):** Cumulative USDC `spendCap`, contract target allowlist (`SwapRouter02`), permitted selector (`exactInputSingle`), recipient locked to owner address, session expiry, and permanent **1-tx revoke** at the Altana KeyStore level. Even if an agent prompt is compromised, Altana rejects unauthorized calls on-chain (`[call_not_permitted]`, `[spend_limit_exceeded]`).
-* **Off-chain agent policy (TypeScript / Zod pre-flight):** Per-transaction cap check (`spendCapPerTx`), minimum interval cadence (`intervalSeconds`), on-chain `simulateContract` quote check for `maxSlippageBps` (`1.00%` default), and structured JSON audit logging.
+* **On-chain enforcement (Altana EIP-7702 Session Key):** Daily Native USDC `spendCap`, strict contract + raw 4-byte selector lock (`SwapRouter02` `0x5615CDAb10dc425a742d643d949a7F474C01abc4` + `0x04e45aaf` `exactInputSingle` only), bounded owner-side `USDC.approve(SwapRouter02, dailyCap * days)` provisioned during `session:grant` (never `maxUint256`; `USDC.approve` `0x095ea7b3`, `sweepToken` `0xdf2ab5bb`, and `multicall` `0xac9650d8` are blocked from session keys), hard expiry, and permanent **1-tx revoke** at the Altana KeyStore level. Unauthorized contracts or over-cap spends revert on-chain (`[call_not_permitted]`, `[spend_limit_exceeded]`).
+* **Off-chain agent policy (TypeScript / Zod pre-flight):** ABI parameter constraints (`recipient == walletAddress`, `tokenOut == CELO`, `fee == 100`), on-chain `simulateContract` quote check for `amountOutMinimum` (`25 bps` execution slippage in `dca:tick`, `100 bps` default in web UI), `+50 bps` asymmetric 24h TWAP gate, `5 bps` pool impact ceiling, `+15%` weekly ceiling, and block-anchored JSONL audit logging. See [`SECURITY.md`](./SECURITY.md) for the explicit threat model and bounded worst-case loss formula (`min(wallet_USDC_balance, dailyCap * remainingDays) + wallet_CELO_gas_balance`).
 
 ---
 
@@ -91,7 +91,7 @@ Executed live on **Celo Mainnet (`42220`)** using `@altananetwork/sdk@1.1.0` EIP
 ## Security & Failure-Mode FAQ
 
 1. **What happens if the session key leaks?**  
-   Blast radius is strictly bounded by the remaining Altana on-chain `totalSpendCap`. The key can only call `SwapRouter02.exactInputSingle` with swap output returning to the owner address, cannot transfer funds to attacker addresses, and is permanently invalidated in 1 revoke transaction from the owner's admin key.
+   The compromised session key cannot call `USDC.approve`, `USDC.transfer`, `sweepToken`, or `multicall`, and cannot exceed the daily USDC spend cap. Because Altana `{ to, signature }` locks contract + selector (`SwapRouter02` + `0x04e45aaf`) rather than ABI calldata fields, worst-case loss before 1-tx owner revocation is explicitly bounded by `min(wallet_USDC_balance, dailyCap * remainingDays) + wallet_CELO_gas_balance`. See [`SECURITY.md`](./SECURITY.md) for full details and the immutable DCA adapter hardening path.
 2. **Why EIP-7702 (`authorizationList`) instead of a smart contract wallet?**  
    The owner keeps their existing EOA address and balances without migrating assets into a separate proxy smart account, and the EIP-7702 delegation remains revocable by the EOA owner.
 3. **What permanently breaks CapRail?**  

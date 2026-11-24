@@ -45,6 +45,7 @@ import {
   computeMinAmountOut,
   DEFAULT_EXECUTION_SLIPPAGE_BPS,
   ERC20_ABI,
+  EXACT_INPUT_SINGLE_SELECTOR,
   UNISWAP_V3_SWAP_ROUTER_02_ABI,
   type UniswapV3FeeTier,
 } from "./calldata.js";
@@ -277,6 +278,10 @@ export function createAltanaCeloClient(): Client {
 /**
  * Translates our deterministic SessionPolicy into native `@altananetwork/sdk`
  * on-chain `SessionPermissions` (enforced by Altana's account contract & KeyStore).
+ *
+ * Strictly locks calls to SwapRouter02 + raw 4-byte hex selector `0x04e45aaf`
+ * (`exactInputSingle`). Never emits `{ to }` catch-all permissions and never
+ * grants `USDC.approve` (`0x095ea7b3`) to session keys.
  */
 export function buildAltanaSessionPermissions(
   policy: SessionPolicy,
@@ -284,7 +289,12 @@ export function buildAltanaSessionPermissions(
 ): SessionPermissions {
   const validated = SessionPolicySchema.parse(policy);
   return {
-    calls: validated.allowedTargets.map((to) => ({ to })),
+    calls: [
+      {
+        to: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+        signature: EXACT_INPUT_SINGLE_SELECTOR, // "0x04e45aaf"
+      },
+    ],
     spend: [
       {
         limit: validated.totalSpendCap,
@@ -602,45 +612,38 @@ export class AltanaLiveAdapter implements AgentWalletAdapter {
   }
 }
 
-export const AUTO_DCA_EXACT_INPUT_SINGLE_SIGNATURE =
-  "exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))" as const;
-export const AUTO_DCA_ERC20_APPROVE_SIGNATURE =
-  "approve(address,uint256)" as const;
+export const DEFAULT_AUTO_DCA_DAILY_CAP_USDC = 4;
+export const DEFAULT_AUTO_DCA_SESSION_DAYS = 14;
 export const DEFAULT_AUTO_DCA_DAILY_GAS_CAP_WEI = 1_000_000_000_000_000_000n; // 1.0 CELO/day relay fee cap
 export const DEFAULT_MIN_GAS_CELO_WEI = 2_000_000_000_000_000n; // 0.002 CELO minimum balance
+export const INSUFFICIENT_USDC_ALLOWANCE_REASON =
+  "Insufficient USDC allowance for SwapRouter02 (owner must run session:grant to top up bounded approval)";
 
 /**
  * Builds restricted on-chain Altana SessionPermissions for bounded USDC -> CELO Auto-DCA.
- * Permits only Uniswap V3 SwapRouter02 `exactInputSingle` (and optional USDC `approve`)
+ * Permits ONLY Uniswap V3 SwapRouter02 raw selector `0x04e45aaf` (`exactInputSingle`)
  * under a strict daily Native USDC spend cap.
+ *
+ * Explicitly excludes `USDC.approve` (`0x095ea7b3`), `multicall` (`0xac9650d8`),
+ * `sweepToken` (`0xdf2ab5bb`), `unwrapWETH9`, and `refundETH` from session permissions.
  */
 export function buildAutoDcaSessionPermissions(
   dailySpendCapUnits: bigint,
   opts?: {
-    includeUsdcApprove?: boolean | undefined;
     dailyGasCapWei?: bigint | undefined;
   },
 ): SessionPermissions {
   if (dailySpendCapUnits <= 0n) {
     throw new Error("dailySpendCapUnits must be strictly greater than 0");
   }
-  const includeUsdcApprove = opts?.includeUsdcApprove ?? true;
   const dailyGasCapWei =
     opts?.dailyGasCapWei ?? DEFAULT_AUTO_DCA_DAILY_GAS_CAP_WEI;
 
   return {
     calls: [
-      ...(includeUsdcApprove
-        ? [
-            {
-              to: CELO_MAINNET_TOKENS.USDC,
-              signature: AUTO_DCA_ERC20_APPROVE_SIGNATURE,
-            },
-          ]
-        : []),
       {
         to: CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
-        signature: AUTO_DCA_EXACT_INPUT_SINGLE_SIGNATURE,
+        signature: EXACT_INPUT_SINGLE_SELECTOR, // "0x04e45aaf"
       },
     ],
     spend: [
@@ -665,7 +668,14 @@ export interface GrantAutoDcaSessionOptions {
   days?: number | undefined;
   rpcUrl?: string | undefined;
   existingWalletAddress?: Address | undefined;
+  attributionCode?: string | undefined;
   dryRun?: boolean | undefined;
+  /** Optional dependency injection hooks for deterministic unit testing */
+  client?: Pick<Client, "createWallet" | "grantSession" | "execute"> | undefined;
+  publicClient?: Pick<
+    PublicClient,
+    "getCode" | "readContract" | "waitForTransactionReceipt"
+  > | undefined;
 }
 
 export interface GrantAutoDcaSessionResult {
@@ -681,6 +691,11 @@ export interface GrantAutoDcaSessionResult {
   days: number;
   expiry: number;
   permissions: SessionPermissions;
+  currentAllowanceUnits: bigint;
+  requiredAllowanceUnits: bigint;
+  approvedAllowanceUnits: bigint;
+  approvalSkipped: boolean;
+  approvalTxHash: Hex | null;
   keyId?: Hex | undefined;
   keyHash?: Hex | undefined;
   txHash?: Hex | undefined;
@@ -688,14 +703,18 @@ export interface GrantAutoDcaSessionResult {
 
 /**
  * Human Control Plane provisioning helper (run once locally by the owner).
- * Uses `OWNER_PRIVATE_KEY` (or `ALTANA_ADMIN_PRIVATE_KEY`) to authorize a scoped
- * Auto-DCA session key on Celo Mainnet (`SwapRouter02.exactInputSingle` + daily USDC cap).
+ * Uses `OWNER_PRIVATE_KEY` (or `ALTANA_ADMIN_PRIVATE_KEY`) to:
+ * 1) Provision a bounded owner-side `USDC.approve(SwapRouter02, dailyCap * days)`
+ *    allowance when existing allowance is lower than the session window total (never `maxUint256`).
+ * 2) Authorize a selector-locked Altana EIP-7702 session key (`SwapRouter02` + `0x04e45aaf` only)
+ *    with a daily Native USDC spend cap and expiry timestamp.
  */
 export async function grantAutoDcaSession(
   opts: GrantAutoDcaSessionOptions,
 ): Promise<GrantAutoDcaSessionResult> {
-  const dailySpendCapUsdc = opts.dailySpendCapUsdc ?? 2;
-  const days = opts.days ?? 14;
+  const dailySpendCapUsdc =
+    opts.dailySpendCapUsdc ?? DEFAULT_AUTO_DCA_DAILY_CAP_USDC;
+  const days = opts.days ?? DEFAULT_AUTO_DCA_SESSION_DAYS;
   if (!Number.isFinite(dailySpendCapUsdc) || dailySpendCapUsdc <= 0) {
     throw new Error("dailySpendCapUsdc must be strictly positive");
   }
@@ -709,17 +728,32 @@ export async function grantAutoDcaSession(
   const sessionSigner = signerFromPrivateKey(sessionPrivateKey);
 
   const dailySpendCapUnits = BigInt(Math.round(dailySpendCapUsdc * 1_000_000));
+  const requiredAllowanceUnits = dailySpendCapUnits * BigInt(days);
   const nowSec = Math.floor(Date.now() / 1000);
   const expiry = nowSec + days * 86_400;
-  const permissions = buildAutoDcaSessionPermissions(dailySpendCapUnits, {
-    includeUsdcApprove: true,
-  });
+  const permissions = buildAutoDcaSessionPermissions(dailySpendCapUnits);
+  const attributionCode =
+    opts.attributionCode ?? CAPRAIL_DEFAULT_ATTRIBUTION_CODE;
 
   const targetWalletAddress = opts.existingWalletAddress
     ? getAddress(opts.existingWalletAddress)
     : getAddress(adminSigner.address);
 
+  const publicClient =
+    opts.publicClient ??
+    createPublicClient({
+      chain: celo,
+      transport: http(opts.rpcUrl ?? CELO.publicRpcUrl),
+    });
+
   if (opts.dryRun) {
+    const currentAllowanceUnits = await publicClient.readContract({
+      address: CELO_MAINNET_TOKENS.USDC,
+      abi: ERC20_ABI,
+      functionName: "allowance",
+      args: [targetWalletAddress, CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02],
+    });
+    const approvalSkipped = currentAllowanceUnits >= requiredAllowanceUnits;
     return {
       dryRun: true,
       walletAddress: targetWalletAddress,
@@ -733,15 +767,15 @@ export async function grantAutoDcaSession(
       days,
       expiry,
       permissions,
+      currentAllowanceUnits,
+      requiredAllowanceUnits,
+      approvedAllowanceUnits: currentAllowanceUnits,
+      approvalSkipped,
+      approvalTxHash: null,
     };
   }
 
-  const client = createAltanaCeloClient();
-  const publicClient = createPublicClient({
-    chain: celo,
-    transport: http(opts.rpcUrl ?? CELO.publicRpcUrl),
-  });
-
+  const client = opts.client ?? createAltanaCeloClient();
   const resolved = await resolveOrProvisionAltanaWallet({
     client,
     adminSigner,
@@ -749,7 +783,55 @@ export async function grantAutoDcaSession(
     existingWalletAddress: opts.existingWalletAddress,
   });
 
+  const walletAddress = getAddress(resolved.wallet.address);
+  const currentAllowanceUnits = await publicClient.readContract({
+    address: CELO_MAINNET_TOKENS.USDC,
+    abi: ERC20_ABI,
+    functionName: "allowance",
+    args: [walletAddress, CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02],
+  });
+
   const feeTokens = [NATIVE_TOKEN, CELO_MAINNET_TOKENS.USDC] as const;
+  let approvalTxHash: Hex | null = null;
+  let approvedAllowanceUnits = currentAllowanceUnits;
+  let approvalSkipped = true;
+
+  // Bounded owner-side USDC approval for SwapRouter02 (dailyCap * days, never maxUint256)
+  if (currentAllowanceUnits < requiredAllowanceUnits) {
+    approvalSkipped = false;
+    const rawApprove = encodeFunctionData({
+      abi: ERC20_ABI,
+      functionName: "approve",
+      args: [
+        CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02,
+        requiredAllowanceUnits,
+      ],
+    });
+    const approveData = appendAttributionTag(rawApprove, attributionCode);
+
+    const approveExec = await client.execute({
+      wallet: resolved.wallet,
+      signer: adminSigner,
+      chainId: CELO.chainId,
+      feeToken: feeTokens,
+      calls: [{ to: CELO_MAINNET_TOKENS.USDC, data: approveData }],
+    });
+
+    if (approveExec.status === "FAILED") {
+      throw new Error(
+        `Owner bounded USDC.approve failed (callsId=${approveExec.callsId})`,
+      );
+    }
+
+    if (approveExec.transactionHash !== undefined) {
+      approvalTxHash = approveExec.transactionHash;
+      await publicClient.waitForTransactionReceipt({
+        hash: approveExec.transactionHash,
+      });
+    }
+    approvedAllowanceUnits = requiredAllowanceUnits;
+  }
+
   const grantResult = await grantSessionWithNonceRecovery({
     client,
     wallet: resolved.wallet,
@@ -768,7 +850,7 @@ export async function grantAutoDcaSession(
 
   return {
     dryRun: false,
-    walletAddress: getAddress(resolved.wallet.address),
+    walletAddress,
     walletReused: resolved.reused,
     sessionPrivateKey,
     sessionGenerated,
@@ -779,6 +861,11 @@ export async function grantAutoDcaSession(
     days,
     expiry,
     permissions,
+    currentAllowanceUnits,
+    requiredAllowanceUnits,
+    approvedAllowanceUnits,
+    approvalSkipped,
+    approvalTxHash,
     keyId: grantResult.keyId,
     keyHash: grantResult.keyHash,
     txHash: grantResult.transactionHash,
@@ -813,7 +900,6 @@ export interface ExecuteAutoDcaWithSessionResult {
   reason: string;
   txHash: Hex | null;
   callsId?: Hex | undefined;
-  approvalTxHash?: Hex | null | undefined;
   amountOutMinimum?: bigint | undefined;
 }
 
@@ -888,6 +974,15 @@ export async function executeAutoDcaWithSession(
     };
   }
 
+  // Session keys never hold USDC.approve permissions; defer cleanly if owner allowance is insufficient
+  if (usdcAllowance < opts.amountInBaseUnits) {
+    return {
+      decision: "DEFER",
+      reason: INSUFFICIENT_USDC_ALLOWANCE_REASON,
+      txHash: null,
+    };
+  }
+
   // 2) Reconstruct live Session using ONLY sessionPrivateKey + on-chain account key lookup
   const sessionSigner = signerFromPrivateKey(opts.sessionPrivateKey);
   const keyHash = keyHashForSessionOrKey(sessionSigner.publicKey);
@@ -931,9 +1026,7 @@ export async function executeAutoDcaWithSession(
       ? opts.dailySpendCapBaseUnits
       : opts.amountInBaseUnits;
 
-  const permissions = buildAutoDcaSessionPermissions(effectiveDailyCap, {
-    includeUsdcApprove: true,
-  });
+  const permissions = buildAutoDcaSessionPermissions(effectiveDailyCap);
 
   const session: Session = {
     walletAddress,
@@ -946,50 +1039,7 @@ export async function executeAutoDcaWithSession(
   const client = opts.client ?? createAltanaCeloClient();
   const feeTokens = [NATIVE_TOKEN, CELO_MAINNET_TOKENS.USDC] as const;
 
-  // 3) If SwapRouter02 allowance < amountIn, approve via session key first and await receipt
-  let approvalTxHash: Hex | null = null;
-  if (usdcAllowance < opts.amountInBaseUnits) {
-    const rawApprove = encodeFunctionData({
-      abi: ERC20_ABI,
-      functionName: "approve",
-      args: [CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02, opts.amountInBaseUnits],
-    });
-    const approveData = appendAttributionTag(rawApprove, attributionCode);
-    try {
-      const approveExec = await client.execute({
-        session,
-        chainId: CELO.chainId,
-        feeToken: feeTokens,
-        calls: [{ to: CELO_MAINNET_TOKENS.USDC, data: approveData }],
-      });
-      if (approveExec.status === "FAILED") {
-        return {
-          decision: "DEFER",
-          reason: `USDC approval via Altana session key failed (callsId=${approveExec.callsId})`,
-          txHash: approveExec.transactionHash ?? null,
-        };
-      }
-      if (approveExec.transactionHash !== undefined) {
-        approvalTxHash = approveExec.transactionHash;
-        await publicClient.waitForTransactionReceipt({
-          hash: approveExec.transactionHash,
-        });
-      }
-    } catch (err) {
-      const msg = isAltanaError(err)
-        ? `[${err.code}] ${err.message}`
-        : err instanceof Error
-          ? err.message
-          : String(err);
-      return {
-        decision: "DEFER",
-        reason: `USDC approval via Altana session key rejected: ${msg}`,
-        txHash: null,
-      };
-    }
-  }
-
-  // 4) Quote live CELO output via simulateContract (fallback to spot estimate) and apply 25 bps slippage buffer
+  // 3) Quote live CELO output via simulateContract (fallback to spot estimate) and apply 25 bps slippage buffer
   let quotedAmountOut: bigint;
   try {
     const { result } = await publicClient.simulateContract({
@@ -1034,7 +1084,7 @@ export async function executeAutoDcaWithSession(
     attributionCode,
   });
 
-  // 5) Submit swap through session-only AltanaLiveAdapter (no adminSigner)
+  // 4) Submit swap through session-only AltanaLiveAdapter (no adminSigner)
   const localPolicy: SessionPolicy = {
     sessionId: `caprail-session-${keyHash.slice(0, 10)}`,
     spendCapPerTx: opts.amountInBaseUnits,
@@ -1073,7 +1123,6 @@ export async function executeAutoDcaWithSession(
       reason: swapExec.reason ?? "Altana session swap execution blocked",
       txHash: swapExec.txHash ?? null,
       callsId: swapExec.callsId,
-      approvalTxHash,
       amountOutMinimum,
     };
   }
@@ -1083,7 +1132,6 @@ export async function executeAutoDcaWithSession(
     reason: `Executed live Auto-DCA via session key (${formatUnits(opts.amountInBaseUnits, 6)} USDC -> CELO, slippage=${executionSlippageBps} bps, tag=${attributionCode})`,
     txHash: swapExec.txHash ?? null,
     callsId: swapExec.callsId,
-    approvalTxHash,
     amountOutMinimum,
   };
 }

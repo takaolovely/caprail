@@ -2,6 +2,7 @@ import {
   encodeFunctionData,
   getAddress,
   parseAbi,
+  toFunctionSelector,
   type Address,
   type Hex,
 } from "viem";
@@ -41,7 +42,6 @@ export const CELO_MAINNET_ROUTERS = {
 } as const;
 
 export const ERC20_TRANSFER_SELECTOR = "0xa9059cbb" as const;
-export const UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR = "0x04e45aaf" as const;
 
 export const ERC20_ABI = parseAbi([
   "function transfer(address to, uint256 value) external returns (bool)",
@@ -70,6 +70,18 @@ export const UNISWAP_V3_POOL_ABI = parseAbi([
 export const UNISWAP_V3_SWAP_ROUTER_02_ABI = parseAbi([
   "function exactInputSingle((address tokenIn, address tokenOut, uint24 fee, address recipient, uint256 amountIn, uint256 amountOutMinimum, uint160 sqrtPriceLimitX96) params) external payable returns (uint256 amountOut)",
 ]);
+
+/**
+ * Single-source-of-truth 4-byte hex selector derived programmatically via viem
+ * from the exact 7-field SwapRouter02 `exactInputSingle` ABI (no `deadline` field).
+ * Strictly equals "0x04e45aaf" (NOT SwapRouter V1's 8-field "0x414bf389").
+ */
+export const EXACT_INPUT_SINGLE_SELECTOR: Hex = toFunctionSelector(
+  UNISWAP_V3_SWAP_ROUTER_02_ABI[0],
+);
+
+export const UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR =
+  EXACT_INPUT_SINGLE_SELECTOR;
 
 export const DEFAULT_MAX_SLIPPAGE_BPS = 100;
 export const DEFAULT_EXECUTION_SLIPPAGE_BPS = 25;

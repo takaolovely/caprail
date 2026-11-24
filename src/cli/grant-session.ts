@@ -1,8 +1,11 @@
-import { getAddress, type Address, type Hex } from "viem";
+import { formatUnits, getAddress, type Address, type Hex } from "viem";
 import { loadEnv } from "../config/env.js";
 import {
+  CAPRAIL_DEFAULT_ATTRIBUTION_CODE,
   CELO_MAINNET_ROUTERS,
-  CELO_MAINNET_TOKENS,
+  DEFAULT_AUTO_DCA_DAILY_CAP_USDC,
+  DEFAULT_AUTO_DCA_SESSION_DAYS,
+  EXACT_INPUT_SINGLE_SELECTOR,
   grantAutoDcaSession,
 } from "../wallet/index.js";
 
@@ -29,8 +32,16 @@ function parseNumberFlag(
 }
 
 function parseGrantCliArgs(argv: readonly string[]): GrantCliOptions {
-  const dailyCapUsdc = parseNumberFlag(argv, "--daily-cap", 2);
-  const daysRaw = parseNumberFlag(argv, "--days", 14);
+  const dailyCapUsdc = parseNumberFlag(
+    argv,
+    "--daily-cap",
+    DEFAULT_AUTO_DCA_DAILY_CAP_USDC,
+  );
+  const daysRaw = parseNumberFlag(
+    argv,
+    "--days",
+    DEFAULT_AUTO_DCA_SESSION_DAYS,
+  );
   if (!Number.isInteger(daysRaw)) {
     throw new Error(`--days must be a positive integer, received "${daysRaw}"`);
   }
@@ -57,6 +68,8 @@ async function main(): Promise<void> {
   const pinnedWalletAddress: Address | undefined = env.ALTANA_WALLET_ADDRESS
     ? getAddress(env.ALTANA_WALLET_ADDRESS)
     : undefined;
+  const attributionCode =
+    env.CELO_ATTRIBUTION_CODE ?? CAPRAIL_DEFAULT_ATTRIBUTION_CODE;
 
   const result = await grantAutoDcaSession({
     adminPrivateKey,
@@ -65,6 +78,7 @@ async function main(): Promise<void> {
     days: opts.days,
     rpcUrl: env.CELO_RPC_URL,
     existingWalletAddress: pinnedWalletAddress,
+    attributionCode,
     dryRun: opts.dryRun,
   });
 
@@ -79,18 +93,38 @@ async function main(): Promise<void> {
   console.log(
     `Session Signer   : ${result.sessionAddress} (${result.sessionGenerated ? "newly generated" : "from .env"})`,
   );
-  console.log(`Daily USDC Cap   : $${result.dailySpendCapUsdc.toFixed(2)} USDC/day (${result.dailySpendCapUnits.toString()} base units)`);
+  console.log(
+    `Daily USDC Cap   : $${result.dailySpendCapUsdc.toFixed(2)} USDC/day (${result.dailySpendCapUnits.toString()} base units)`,
+  );
   console.log(`Duration         : ${result.days} days (expires ${expiryIso})`);
-  console.log(`Allowed Router   : ${CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02} (exactInputSingle)`);
-  console.log(`Allowed Token    : ${CELO_MAINNET_TOKENS.USDC} (approve)`);
+  console.log(
+    `Allowed Call     : ${CELO_MAINNET_ROUTERS.UNISWAP_V3_SWAP_ROUTER_02} (${EXACT_INPUT_SINGLE_SELECTOR} only; USDC.approve excluded from session)`,
+  );
+  console.log(
+    `Current Allowance: ${formatUnits(result.currentAllowanceUnits, 6)} USDC`,
+  );
+  console.log(
+    `Required Bounded : ${formatUnits(result.requiredAllowanceUnits, 6)} USDC (dailyCap * ${result.days} days; never maxUint256)`,
+  );
 
   if (result.dryRun) {
     console.log("--------------------------------------------------------------------");
+    console.log(
+      result.approvalSkipped
+        ? "[DRY RUN] Existing USDC allowance already covers the session window (owner approve will be skipped)."
+        : `[DRY RUN] Owner will execute bounded USDC.approve(${formatUnits(result.requiredAllowanceUnits, 6)} USDC) before granting session.`,
+    );
     console.log("[DRY RUN] No on-chain transaction was signed or broadcast.");
     console.log("Remove --dry-run to authorize this session key on Celo Mainnet.");
     return;
   }
 
+  console.log(
+    `Approval Tx Hash : ${result.approvalTxHash ?? "skipped (existing allowance covers session)"}`,
+  );
+  if (result.approvalTxHash !== null) {
+    console.log(`Approval Link    : https://celoscan.io/tx/${result.approvalTxHash}`);
+  }
   console.log(`Session Key ID   : ${result.keyId ?? "n/a"}`);
   console.log(`Session Key Hash : ${result.keyHash ?? "n/a"}`);
   console.log(`Grant Tx Hash    : ${result.txHash ?? "(bundled)"}`);
