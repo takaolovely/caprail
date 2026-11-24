@@ -27,12 +27,16 @@ export const CELO_MAINNET_TOKENS = {
 } as const;
 
 /**
- * Canonical Celo Mainnet (Chain ID 42220) DEX routers.
+ * Canonical Celo Mainnet (Chain ID 42220) DEX routers and factories.
  */
 export const CELO_MAINNET_ROUTERS = {
   /** Uniswap V3 SwapRouter02 on Celo Mainnet */
   UNISWAP_V3_SWAP_ROUTER_02: getAddress(
     "0x5615CDAb10dc425a742d643d949a7F474C01abc4",
+  ) as Address,
+  /** Uniswap V3 Factory on Celo Mainnet */
+  UNISWAP_V3_FACTORY: getAddress(
+    "0xAfE208a311B21f13EF87E33A90049fC17A7acDEc",
   ) as Address,
 } as const;
 
@@ -42,6 +46,21 @@ export const UNISWAP_V3_EXACT_INPUT_SINGLE_SELECTOR = "0x04e45aaf" as const;
 export const ERC20_ABI = parseAbi([
   "function transfer(address to, uint256 value) external returns (bool)",
   "function balanceOf(address account) external view returns (uint256)",
+  "function allowance(address owner, address spender) external view returns (uint256)",
+  "function approve(address spender, uint256 value) external returns (bool)",
+]);
+
+export const UNISWAP_V3_FACTORY_ABI = parseAbi([
+  "function getPool(address tokenA, address tokenB, uint24 fee) external view returns (address pool)",
+]);
+
+export const UNISWAP_V3_POOL_ABI = parseAbi([
+  "function slot0() external view returns (uint160 sqrtPriceX96, int24 tick, uint16 observationIndex, uint16 observationCardinality, uint16 observationCardinalityNext, uint8 feeProtocol, bool unlocked)",
+  "function liquidity() external view returns (uint128)",
+  "function observe(uint32[] secondsAgos) external view returns (int56[] tickCumulatives, uint160[] secondsPerLiquidityCumulativeX128s)",
+  "function token0() external view returns (address)",
+  "function token1() external view returns (address)",
+  "function fee() external view returns (uint24)",
 ]);
 
 /**
@@ -53,6 +72,7 @@ export const UNISWAP_V3_SWAP_ROUTER_02_ABI = parseAbi([
 ]);
 
 export const DEFAULT_MAX_SLIPPAGE_BPS = 100;
+export const DEFAULT_EXECUTION_SLIPPAGE_BPS = 25;
 const BPS_DENOMINATOR = 10_000n;
 
 /**

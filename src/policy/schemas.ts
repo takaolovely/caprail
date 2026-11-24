@@ -87,3 +87,21 @@ export const DcaStrategySchema = z
   });
 
 export type DcaStrategy = z.infer<typeof DcaStrategySchema>;
+
+export const DcaDecisionPolicySchema = z.object({
+  orderSizeUsdc: z.number().positive("orderSizeUsdc must be positive").default(0.5),
+  dailySpendCapUsdc: z
+    .number()
+    .positive("dailySpendCapUsdc must be positive")
+    .default(2.0),
+  cadenceHours: z.number().int().min(1).default(4),
+  maxPoolImpactBps: z.number().positive().max(1_000).default(5),
+  executionSlippageBps: z.number().int().min(1).max(1_000).default(25),
+  maxDeviationAboveTwapBps: z.number().min(0).max(5_000).default(50),
+  maxCeilingPct: z.number().positive().max(500).default(15),
+  poolFeeTier: z
+    .union([z.literal(100), z.literal(500), z.literal(3000), z.literal(10000)])
+    .default(100),
+});
+
+export type DcaDecisionPolicy = z.infer<typeof DcaDecisionPolicySchema>;

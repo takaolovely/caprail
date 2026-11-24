@@ -20,7 +20,20 @@ CapRail is a non-custodial **Guardrailed Auto-DCA (`USDC -> CELO`)** system buil
 CapRail separates owner control from automated agent execution across two explicit planes:
 
 1. **Human Control Plane (`https://caprail.vercel.app`):** Non-custodial web interface for wallet owners to configure per-trade and cumulative USDC spend caps, inspect raw ERC-8021 tagged calldata and audit telemetry, run zero-gas local simulations or live Celo Mainnet swaps, and trigger a **1-tx emergency revoke**.
-2. **Agent Execution Plane (Agent-agnostic CLI + `SKILL.md`):** Designed so any autonomous agent (with our self-hosted VPS agent **Hermes** as the live reference runner) can evaluate guardrails and submit bounded `USDC -> CELO` swaps through an Altana session key without holding the owner's master private key.
+2. **Agent Execution Plane (Agent-agnostic CLI + [`SKILL.md`](./SKILL.md)):** Designed so any autonomous agent (with our self-hosted VPS agent **Hermes** as the live reference runner) can run `npm run dca:tick` to evaluate live pool conditions (`EXECUTE` / `DEFER`), write block-anchored audit records (`blockNumber` + raw `sqrtPriceX96`) to `logs/decisions.jsonl`, and execute bounded `USDC -> CELO` swaps without holding the owner's master private key.
+
+---
+
+## Agent Decision Gate (`dca:tick`) & Verifiable Audit Log
+
+The Agent Execution Plane (`src/cli/dca-tick.ts`, documented in [`SKILL.md`](./SKILL.md)) evaluates live Celo Mainnet Uniswap V3 `USDC/CELO` (`0.01%`, `fee = 100`) pool state before every 4-hour `$0.50` USDC tick (bounded by the `$2.00/day` Altana on-chain spend cap):
+
+* **Dual Slippage Guardrail:**
+  * **Pre-flight (`5 bps` / `0.05%` default):** Estimates single-tick price impact from live `liquidity()` and `sqrtPriceX96`. Orders exceeding `5 bps` return `DEFER` (`POOL_IMPACT_EXCEEDED`).
+  * **Execution (`25 bps` / `0.25%` default):** Applies a `25 bps` buffer to `SwapRouter02.exactInputSingle` `amountOutMinimum` so valid swaps do not revert from intra-block price movement.
+* **Asymmetric 24h TWAP Gate (`+50 bps`):** Computes `deviationBps = ((spot - twap24h) / twap24h) * 10000` using `pool.observe([86400, 0])` (falling back to rolling 24h `logs/decisions.jsonl` average, then spot on cold start). Upside spikes above `+50 bps` return `DEFER`; dips (`< 0 bps`) and moves `<= +50 bps` return `EXECUTE`.
+* **Weekly Ceiling Circuit Breaker (`+15%`):** Returns `DEFER` if spot exceeds `+15%` above the 7-day session anchor price.
+* **Block-Anchored Audit Trail (`logs/decisions.jsonl`):** Every tick appends a JSON line recording `blockNumber`, `poolAddress`, raw `sqrtPriceX96`, `spotPriceUsdcPerCelo`, `twap24hUsdcPerCelo`, `deviationBps`, `estimatedPoolImpactBps`, `decision` (`EXECUTE` / `DEFER` / `HALTED_NO_GAS`), `reason`, and `txHash`.
 
 ---
 
@@ -109,16 +122,22 @@ Executed live on **Celo Mainnet (`42220`)** using `@altananetwork/sdk@1.1.0` EIP
 │   │   └── altanaLive.ts              # Live CELO_MAINNET adapter (@altananetwork/sdk + nonce recovery)
 │   ├── engine/
 │   │   ├── auditLog.ts                # Structured JSON audit telemetry
-│   │   └── autoDcaEngine.ts           # AutoDcaEngine (cadence, slippage, spend cap guardrails)
+│   │   ├── autoDcaEngine.ts           # AutoDcaEngine (cadence, slippage, spend cap guardrails)
+│   │   ├── decisionGate.ts            # Pure EXECUTE/DEFER market gate + Uniswap V3 pool reader
+│   │   └── decisionLog.ts             # Block-anchored JSONL logger (logs/decisions.jsonl)
 │   ├── identity/
 │   │   ├── erc8004.ts                 # Celo Mainnet ERC-8004 registration helpers
 │   │   └── agent-card.json            # ERC-8004 Agent Identity Card template
 │   └── cli/
 │       ├── check-network.ts           # Read-only Celo Mainnet (42220) + Altana SDK probe
 │       ├── dry-run.ts                 # Local simulation runner (positive + negative Auto-DCA tests)
+│       ├── dca-tick.ts                # Agent CLI runner (--dry-run / --live EXECUTE/DEFER tick)
 │       └── live-test.ts               # Live Celo Mainnet session grant, verification tx, negative tests, 1-tx revoke
 ├── web/                               # Human Control Plane (React 19 + Vite + Tailwind + viem)
-├── tests/guardrails.test.ts           # Vitest suite (policy, Auto-DCA, slippage, Altana, ERC-8021, ERC-8004)
+├── tests/
+│   ├── guardrails.test.ts             # Policy, Auto-DCA, slippage, Altana, ERC-8021, ERC-8004 tests
+│   └── decisionGate.test.ts           # Decision gate (TWAP, dual slippage, weekly ceiling, JSONL log) tests
+├── SKILL.md                           # Agent-agnostic runner interface specification
 ├── .env.example                       # Placeholder env template (zero secrets)
 └── SECURITY.md                        # Guardrail model & secrets hygiene policy
 ```
@@ -130,6 +149,7 @@ npm install
 npm run typecheck
 npm test
 npm run dry-run
+npm run dca:tick -- --dry-run
 npm run check:network
 npm run web:build
 ```

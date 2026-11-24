@@ -12,7 +12,7 @@ async function main(): Promise<void> {
   const attributionCode =
     env.CELO_ATTRIBUTION_CODE ?? CAPRAIL_DEFAULT_ATTRIBUTION_CODE;
 
-  console.log("=== CapRail — Celo Mainnet & Altana SDK Read-Only Network Check ===");
+  console.log("=== CapRail | Celo Mainnet & Altana SDK Read-Only Network Check ===");
   console.log(`Repository         : ${CAPRAIL_REPO_SLUG}`);
   console.log(`RPC URL            : ${env.CELO_RPC_URL}`);
 
