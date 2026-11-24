@@ -19,13 +19,12 @@ CapRail strictly separates owner authority from autonomous agent execution:
 
 ## Explicit Trust Boundary: `LOCAL_SIMULATION` vs `CELO_MAINNET`
 
-Every adapter and log record explicitly labels its execution mode:
+Every adapter and log record explicitly labels its execution mode (Altana KeyStore on Celo Mainnet `42220`: `0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c`):
 
-| Mode | Adapter | Enforcement Layer | What It Proves |
-| :--- | :--- | :--- | :--- |
-| `LOCAL_SIMULATION` | `LocalSessionSimulator` | Deterministic TypeScript policy evaluator (`src/policy/evaluator.ts`) | Verifies Zod schemas, spend-cap accounting, slippage math, audit logging, and negative test paths with zero gas and zero keys. **Does NOT constitute an on-chain smart-contract revert.** |
-| `CELO_MAINNET` | `AltanaLiveAdapter` / `executeAutoDcaWithSession` | Off-chain pre-flight policy gate + Altana EIP-7702 on-chain session permissions & KeyStore (`0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c`) | Enforces contract + 4-byte selector lock, daily spend cap, expiry, and 1-tx revoke on Celo Mainnet (`42220`). |
-
+| Mode & Adapter | Enforcement Layer | What It Proves |
+| :--- | :--- | :--- |
+| **`LOCAL_SIMULATION`**<br>`LocalSessionSimulator` | Deterministic TypeScript policy evaluator (`src/policy/evaluator.ts`) | Verifies Zod schemas, spend-cap accounting, slippage math, audit logging, and negative test paths with zero gas and zero keys. **Does NOT constitute an on-chain smart-contract revert.** |
+| **`CELO_MAINNET`**<br>`AltanaLiveAdapter` | Off-chain pre-flight policy gate + Altana EIP-7702 on-chain session permissions & KeyStore | Enforces contract + 4-byte selector lock (`0x04e45aaf`), daily spend cap, expiry, and 1-tx revoke on Celo Mainnet (`42220`). |
 ---
 
 ## What Is Enforced On-Chain (Altana EIP-7702)
