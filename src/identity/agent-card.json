@@ -1,7 +1,8 @@
 {
   "type": "https://eips.ethereum.org/EIPS/eip-8004#registration-v1",
   "name": "CapRail: Guardrailed Auto-DCA (USDC -> CELO)",
-  "description": "Non-custodial autonomous Auto-DCA agent on Celo Mainnet (42220) executing USDC -> CELO swaps via Uniswap V3 SwapRouter02 using Altana EIP-7702 Session Keys with deterministic spend caps, target allowlists, slippage guards, ERC-8021 attribution tag (celo_0518175d3efe), and 1-tx revocation.",
+  "description": "Non-custodial autonomous Auto-DCA agent on Celo Mainnet (42220) executing USDC -> CELO swaps via Uniswap V3 SwapRouter02 using selector-locked Altana EIP-7702 Session Keys (0x04e45aaf), deterministic 24h TWAP and pool impact gates, ERC-8021 attribution tag (celo_0518175d3efe), and 1-tx revocation.",
+  "image": "https://raw.githubusercontent.com/takaolovely/caprail/main/assets/logo.png",
   "services": [
     {
       "name": "CLI",
@@ -12,7 +13,20 @@
       "name": "AgentWallet",
       "endpoint": "eip155:42220:0x3631D44543384253C099f2A09c0D0bE109Eb7944",
       "version": "1.0.0"
+    },
+    {
+      "name": "web",
+      "endpoint": "https://caprail.vercel.app"
+    },
+    {
+      "name": "skill",
+      "endpoint": "https://raw.githubusercontent.com/takaolovely/caprail/main/SKILL.md"
     }
   ],
-  "registrations": []
+  "registrations": [
+    {
+      "agentId": 10109,
+      "agentRegistry": "eip155:42220:0x8004A169FB4a3325136EB29fA0ceB6D2e539a432"
+    }
+  ]
 }
