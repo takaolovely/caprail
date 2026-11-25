@@ -94,16 +94,18 @@ export function VerifiedReceiptCard({
           Live Celo Mainnet Execution Ledger
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-[#5d7166]">
-          Three settled Altana EIP-7702 transactions on Celo Mainnet (Chain ID 42220)
-          plus verified smart-contract rejections directly from Altana KeyStore / Relay.
+          {VERIFIED_MAINNET_PROOFS.length} settled Celo Mainnet (Chain ID 42220)
+          transactions covering Altana session grant, headline Auto-DCA swap,
+          named external user (@MFauzulAzim), ERC-8021 attribution, and 1-tx
+          revoke, plus KeyStore / Relay negative rejections.
         </p>
       </div>
 
       {/* Perforated Receipt Divider */}
       <div className="my-5 border-t border-dashed border-[#d5dce0]" />
 
-      {/* 3 Mainnet Transaction Rows */}
-      <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+      {/* Verified Mainnet Transaction Rows */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3">
         {VERIFIED_MAINNET_PROOFS.map((proof) => (
           <div
             key={proof.id}

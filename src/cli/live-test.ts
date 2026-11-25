@@ -164,7 +164,7 @@ async function main(): Promise<void> {
   }
   if (recipientAddress.toLowerCase() === ownerAccount.address.toLowerCase()) {
     console.warn(
-      "  [WARN] TEST_RECIPIENT_ADDRESS matches OWNER address (fine for smoke test, but final hackathon demo requires a named external collaborator).",
+      "  [WARN] TEST_RECIPIENT_ADDRESS matches OWNER address (fine for local smoke test; named external user mainnet proof is already verified for @MFauzulAzim 0xfb69ABfADd1A6f1929e988f41D2AAb0d09c48e63 at tx 0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5).",
     );
   }
 

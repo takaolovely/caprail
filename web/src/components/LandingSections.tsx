@@ -23,7 +23,7 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 import { CeloLogo, UniswapLogo, UsdcLogo } from "./BrandIcons.js";
-import { CAPRAIL_METADATA } from "../data/mainnetProof.js";
+import { CAPRAIL_METADATA, VERIFIED_MAINNET_PROOFS } from "../data/mainnetProof.js";
 
 const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
 
@@ -541,9 +541,9 @@ const SPARKLINE_STATS = [
     bars: [60, 75, 68, 85, 80, 92, 88, 100],
   },
   {
-    value: "3",
+    value: String(VERIFIED_MAINNET_PROOFS.length),
     label: "Live Mainnet Txs",
-    sub: "Grant, ERC-8021 Tx & 1-Tx Revoke",
+    sub: "Grant, Swaps, External User & Revoke",
     bars: [24, 38, 52, 44, 70, 84, 78, 95],
   },
   {
