@@ -5,8 +5,10 @@ import { decodeFunctionData, type Address, type Hex } from "viem";
 import { describe, expect, it } from "vitest";
 import {
   MISSING_LIVE_SESSION_CREDENTIALS_REASON,
+  parseCliArgs,
   resolveLiveSessionCredentials,
 } from "../src/cli/dca-tick.js";
+import { DcaDecisionPolicySchema } from "../src/policy/index.js";
 import {
   appendDecisionLog,
   computeDeviationBps,
@@ -184,6 +186,29 @@ describe("Auto-DCA Market Decision Gate (evaluateDcaTick)", () => {
 describe("Session-Only Agent Execution Decoupling (Human Control vs Agent Plane)", () => {
   const TEST_SESSION_KEY =
     "0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" as Hex;
+
+  it("defaults dailySpendCapUsdc to 4.0 (supporting up to 10 USDC/day) and parses --daily-cap in dca:tick CLI", () => {
+    const defaultPolicy = DcaDecisionPolicySchema.parse({});
+    expect(defaultPolicy.dailySpendCapUsdc).toBe(4.0);
+
+    const maxPolicy = DcaDecisionPolicySchema.parse({ dailySpendCapUsdc: 10 });
+    expect(maxPolicy.dailySpendCapUsdc).toBe(10);
+
+    expect(
+      DcaDecisionPolicySchema.safeParse({ dailySpendCapUsdc: 10.01 }).success,
+    ).toBe(false);
+
+    const parsedArgs = parseCliArgs([
+      "--live",
+      "--amount",
+      "0.1",
+      "--daily-cap",
+      "6.5",
+    ]);
+    expect(parsedArgs.live).toBe(true);
+    expect(parsedArgs.orderSizeUsdc).toBe(0.1);
+    expect(parsedArgs.dailySpendCapUsdc).toBe(6.5);
+  });
 
   it("rejects --live execution when session credentials are missing without asking for OWNER_PRIVATE_KEY", () => {
     expect(

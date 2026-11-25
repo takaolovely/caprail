@@ -93,7 +93,8 @@ export const DcaDecisionPolicySchema = z.object({
   dailySpendCapUsdc: z
     .number()
     .positive("dailySpendCapUsdc must be positive")
-    .default(2.0),
+    .max(10, "dailySpendCapUsdc must not exceed 10 USDC/day")
+    .default(4.0),
   cadenceHours: z.number().int().min(1).default(4),
   maxPoolImpactBps: z.number().positive().max(1_000).default(5),
   executionSlippageBps: z.number().int().min(1).max(1_000).default(25),

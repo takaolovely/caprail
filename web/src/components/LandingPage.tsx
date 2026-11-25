@@ -26,7 +26,7 @@ import { shortenAddress } from "../lib/sandboxBridge.js";
 const EASE_OUT_EXPO = [0.22, 1, 0.36, 1] as const;
 
 const DIAGONAL_RIBBON_TEXT =
-  `✓ 0x9280…954a Granted · ✓ 0xcb30…1c27 ERC-8021 0.05 USDC · ✕ call_not_permitted Blocked · ✕ spend_limit_exceeded Blocked · ✓ 0x1455…d320 Revoked · ERC-8021 ${CAPRAIL_METADATA.attributionCode} · `;
+  `✓ 0xc955…8a3c DCA Grant (0x04e45aaf) · ✓ 0xa220…a230 Session DCA · ✓ 0x838a…fcc5 @MFauzulAzim · ✕ call_not_permitted Blocked · ✕ spend_limit_exceeded Blocked · ✓ 0x1455…d320 Revoked · ERC-8021 ${CAPRAIL_METADATA.attributionCode} · `;
 
 interface LandingPageProps {
   onNavigate: (route: AppRoute) => void;
@@ -333,7 +333,7 @@ attribution: "${CAPRAIL_METADATA.attributionCode}"`}
                 </div>
               </div>
               <p className="mt-3 font-numeric text-[10px] text-[#5d7166]">
-                Verified on Celo 42220 · Nov 23, 2026
+                Verified on Celo 42220 · Blocks #83540877 - #83716253
               </p>
             </article>
 

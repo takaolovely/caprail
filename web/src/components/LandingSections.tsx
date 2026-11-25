@@ -661,8 +661,8 @@ const SHOWCASE_STEPS = [
   {
     num: "02",
     title: "Delegate Scoped Key",
-    desc: "Authorize an Altana EIP-7702 Session Key on Celo Mainnet while your admin key stays offline.",
-    chip: "✓ KeyStore Granted · 0x9280…954a",
+    desc: "Authorize an Altana EIP-7702 Session Key on Celo Mainnet ($4.00/day cap, 0x04e45aaf only) while your admin key stays offline.",
+    chip: "✓ DCA Key Granted · 0xc955…8a3c",
     chipTone: "mint" as const,
   },
   {

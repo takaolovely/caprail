@@ -95,9 +95,10 @@ export function VerifiedReceiptCard({
         </h3>
         <p className="mt-1 text-xs leading-relaxed text-[#5d7166]">
           {VERIFIED_MAINNET_PROOFS.length} settled Celo Mainnet (Chain ID 42220)
-          transactions covering Altana session grant, headline Auto-DCA swap,
-          named external user (@MFauzulAzim), ERC-8021 attribution, and 1-tx
-          revoke, plus KeyStore / Relay negative rejections.
+          transactions covering the primary SwapRouter02 (0x04e45aaf) DCA session
+          grant, 3 live Auto-DCA swaps (including session-key Tick #3 and named
+          external user @MFauzulAzim), smoke-test grant, and 1-tx revoke, plus
+          KeyStore / Relay negative rejections.
         </p>
       </div>
 

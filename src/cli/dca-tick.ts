@@ -27,6 +27,7 @@ export const MISSING_LIVE_SESSION_CREDENTIALS_REASON =
 export interface CliOptions {
   live: boolean;
   orderSizeUsdc?: number | undefined;
+  dailySpendCapUsdc?: number | undefined;
   maxImpactBps?: number | undefined;
   maxDeviationBps?: number | undefined;
   execSlippageBps?: number | undefined;
@@ -87,6 +88,7 @@ export function parseCliArgs(argv: readonly string[]): CliOptions {
   return {
     live,
     orderSizeUsdc: parseNumberFlag(argv, "--amount"),
+    dailySpendCapUsdc: parseNumberFlag(argv, "--daily-cap"),
     maxImpactBps: parseNumberFlag(argv, "--max-impact-bps"),
     maxDeviationBps: parseNumberFlag(argv, "--max-deviation-bps"),
     execSlippageBps: parseNumberFlag(argv, "--exec-slippage-bps"),
@@ -109,6 +111,9 @@ export async function runDcaTick(argv: readonly string[] = process.argv.slice(2)
   const policy: DcaDecisionPolicy = DcaDecisionPolicySchema.parse({
     ...(opts.orderSizeUsdc !== undefined
       ? { orderSizeUsdc: opts.orderSizeUsdc }
+      : {}),
+    ...(opts.dailySpendCapUsdc !== undefined
+      ? { dailySpendCapUsdc: opts.dailySpendCapUsdc }
       : {}),
     ...(opts.maxImpactBps !== undefined
       ? { maxPoolImpactBps: opts.maxImpactBps }
@@ -183,7 +188,27 @@ export async function runDcaTick(argv: readonly string[] = process.argv.slice(2)
     return entry;
   }
 
-  // 5) LIVE EXECUTION PATH: strictly session-only (never uses OWNER_PRIVATE_KEY)
+  // 5) Enforce dailySpendCapUsdc pre-flight before live broadcast
+  if (policy.orderSizeUsdc > policy.dailySpendCapUsdc) {
+    const entry: DecisionLogEntry = {
+      timestamp,
+      mode: "LIVE",
+      blockNumber: snapshot.blockNumber,
+      poolAddress: snapshot.poolAddress,
+      sqrtPriceX96: snapshot.sqrtPriceX96.toString(),
+      spotPriceUsdcPerCelo: evalResult.spotPriceUsdcPerCelo,
+      twap24hUsdcPerCelo: evalResult.twap24hUsdcPerCelo,
+      deviationBps: evalResult.deviationBps,
+      estimatedPoolImpactBps: evalResult.estimatedPoolImpactBps,
+      decision: "DEFER",
+      reason: `Order size ($${policy.orderSizeUsdc.toFixed(2)} USDC) exceeds configured daily spend cap ($${policy.dailySpendCapUsdc.toFixed(2)} USDC/day)`,
+      txHash: null,
+    };
+    emitAndLog(entry);
+    return entry;
+  }
+
+  // 6) LIVE EXECUTION PATH: strictly session-only (never uses OWNER_PRIVATE_KEY)
   const credentials = resolveLiveSessionCredentials(env);
   if (credentials === null) {
     const entry: DecisionLogEntry = {

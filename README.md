@@ -11,7 +11,7 @@
 **ERC-8021 Builder Attribution Tag:** `celo_0518175d3efe` (official Loops House attribution tag encoded via `@celo/attribution-tags`)  
 **ERC-8004 Identity Registry (Celo Mainnet):** `0x8004A169FB4a3325136EB29fA0ceB6D2e539a432` (Agent ID `#10109`, tx [`0x043cfd11...e18a706`](https://celoscan.io/tx/0x043cfd11e5d698932e7a6efb52ee9122b4edfe747f2c0237793b95c98e18a706))
 
-CapRail is a non-custodial **Guardrailed Auto-DCA (`USDC -> CELO`)** system built for the **Celo "Agents Open for Business" Hackathon** (**Altana Agent Wallet** track). It lets wallet owners delegate recurring Uniswap V3 `SwapRouter02` swaps to autonomous agents using scoped **Altana EIP-7702 Session Keys** (`spendCap`, strict `SwapRouter02` selector `0x04e45aaf` lock, slippage floor, expiry, and `1-tx revoke`) without exposing the owner's master private key.
+CapRail is a non-custodial **Guardrailed Auto-DCA (`USDC -> CELO`)** system built for the **Celo "Agents Open for Business" Hackathon** (**Altana Agent Wallet** track). It lets wallet owners delegate recurring Uniswap V3 `SwapRouter02` swaps to autonomous agents using scoped **Altana EIP-7702 Session Keys** (`$4.00/day` default USDC spend cap, strict `SwapRouter02` selector `0x04e45aaf` lock, slippage floor, expiry, and `1-tx revoke`) without exposing the owner's master private key.
 
 ---
 
@@ -19,7 +19,7 @@ CapRail is a non-custodial **Guardrailed Auto-DCA (`USDC -> CELO`)** system buil
 
 CapRail separates owner control from automated agent execution across two explicit planes:
 
-1. **Human Control Plane (`https://caprail.vercel.app` & local `npm run session:grant`):** Non-custodial owner interface to set daily USDC spend caps, provision bounded owner-side `USDC.approve(SwapRouter02, dailyCap * days)`, inspect raw ERC-8021 tagged calldata and audit telemetry, run zero-gas local simulations or live Celo Mainnet swaps, and trigger a **1-tx emergency revoke**.
+1. **Human Control Plane (`https://caprail.vercel.app` & local `npm run session:grant`):** Non-custodial owner interface to set daily USDC spend caps (`$4.00/day` default, configurable up to `10 USDC/day`), provision bounded owner-side `USDC.approve(SwapRouter02, dailyCap * days)`, inspect raw ERC-8021 tagged calldata and audit telemetry, run zero-gas local simulations or live Celo Mainnet swaps, and trigger a **1-tx emergency revoke**.
 2. **Agent Execution Plane (Agent-agnostic CLI + [`SKILL.md`](./SKILL.md)):** Designed so any autonomous agent (with our self-hosted VPS agent **Hermes** as the live reference runner) can run `npm run dca:tick` to evaluate live pool conditions (`EXECUTE` / `DEFER`), write block-anchored audit records (`blockNumber` + raw `sqrtPriceX96`) to `logs/decisions.jsonl`, and execute bounded `USDC -> CELO` swaps without holding the owner's master private key.
 
 ---
@@ -46,20 +46,21 @@ Executed live on **Celo Mainnet (`42220`)** using `@altananetwork/sdk@1.1.0` EIP
 | Step | Action | Verification / Celoscan Proof |
 | :--- | :--- | :--- |
 | **0. ERC-8004 Agent Identity** | On-chain registration (`Agent ID #10109`, `agent-card.json` metadata URI) for `0x3631...7944` | [`0x043cfd11e5d698932e7a6efb52ee9122b4edfe747f2c0237793b95c98e18a706`](https://celoscan.io/tx/0x043cfd11e5d698932e7a6efb52ee9122b4edfe747f2c0237793b95c98e18a706) (Block `#83539919`) |
-| **1. Session Grant** | Scoped 1h Altana EIP-7702 Session Key (`0.15 USDC` per-tx, `0.30 USDC` total, allowlisted target) | [`0x928012be32adf147c343ab658b26ccef5e4928eafeb48ce2d8849931ae8f954a`](https://celoscan.io/tx/0x928012be32adf147c343ab658b26ccef5e4928eafeb48ce2d8849931ae8f954a) (Block `#83506620`) |
-| **2. Live Auto-DCA Swap (Primary Wallet)** | Guardrailed `0.10 USDC -> 1.809088 CELO` swap via `SwapRouter02` (`0x04e45aaf`) with slippage floor & ERC-8021 `celo_0518175d3efe` (after bounded approve [`0x252e9dc5...`](https://celoscan.io/tx/0x252e9dc51e4055c49d45fe110de02cf09e0cd0110476225aaa12e9c23515af1b)) | [`0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b`](https://celoscan.io/tx/0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b) (Block `#83540877`) |
-| **3. Named External User Auto-DCA (`@MFauzulAzim`)** | External collaborator `0xfb69ABfADd1A6f1929e988f41D2AAb0d09c48e63`: `0.50 USDC -> 9.009794 CELO` via `SwapRouter02` (`0x04e45aaf`) with ERC-8021 `celo_0518175d3efe` | [`0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5`](https://celoscan.io/tx/0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5) (Block `#83625775`) |
-| **4. ERC-8021 Attribution Verification Transfer** | Historical live `0.05 USDC` transfer verifying ERC-8021 calldata suffix decoding on Celo Mainnet *(executed prior to upgrading default runtime tag to `celo_0518175d3efe`)* | [`0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27`](https://celoscan.io/tx/0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27) |
-| **5. Negative Tests (Altana KeyStore / Relay)** | Direct Altana Relay / KeyStore calls bypassing TypeScript pre-flight: un-allowlisted USD₮ call and `0.35 USDC > 0.30 USDC` over-cap spend | Rejected pre-inclusion by Altana Relay / KeyStore: `[call_not_permitted]` and `[spend_limit_exceeded]` (no gas burned on mined revert; reproducible via `npm run live:test -- --confirm-mainnet` Steps 4c/4d) |
-| **6. 1-Tx Emergency Revoke** | Instant KeyStore session key revocation (`revokeSession`) | [`0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320`](https://celoscan.io/tx/0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320) |
+| **1. Primary DCA Session Grant (`0x04e45aaf`)** | Scoped 14-day Altana EIP-7702 Auto-DCA Session Key (`$4.00/day` USDC cap, `SwapRouter02` selector `0x04e45aaf` only, `USDC.approve` excluded; preceded by bounded `$56.00` owner approve [`0x1d4d18c5...`](https://celoscan.io/tx/0x1d4d18c51897af8607f3ed755cbaa3ce72ed97e0006eb243812e0ea64fcf60e6)) | [`0xc9557761ad247e5d6d17d5d2e22184968c5f91fd19d61e60f896b70fd4268a3c`](https://celoscan.io/tx/0xc9557761ad247e5d6d17d5d2e22184968c5f91fd19d61e60f896b70fd4268a3c) (Block `#83716167`) |
+| **2. Live Auto-DCA Swap #1 (Primary Wallet)** | Guardrailed `0.10 USDC -> 1.809088 CELO` swap via `SwapRouter02` (`0x04e45aaf`) with slippage floor & ERC-8021 `celo_0518175d3efe` (after bounded approve [`0x252e9dc5...`](https://celoscan.io/tx/0x252e9dc51e4055c49d45fe110de02cf09e0cd0110476225aaa12e9c23515af1b)) | [`0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b`](https://celoscan.io/tx/0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b) (Block `#83540877`) |
+| **3. Live Auto-DCA Swap #2 (Named External User `@MFauzulAzim`)** | External collaborator `0xfb69ABfADd1A6f1929e988f41D2AAb0d09c48e63`: `0.50 USDC -> 9.009794 CELO` via `SwapRouter02` (`0x04e45aaf`) with ERC-8021 `celo_0518175d3efe` | [`0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5`](https://celoscan.io/tx/0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5) (Block `#83625775`) |
+| **4. Live Auto-DCA Session Tick #3 (`dca:tick --live`)** | Autonomous session-key execution (`0.10 USDC -> 1.897283 CELO`, `impact=0.2127 bps`, `deviation=-235.49 bps`, `25 bps` slippage floor, `tag=celo_0518175d3efe`) without `OWNER_PRIVATE_KEY` | [`0xa220f30f05d0c0e065340b2716ceb9d5b47b266a756bd784eb2fe23d729da230`](https://celoscan.io/tx/0xa220f30f05d0c0e065340b2716ceb9d5b47b266a756bd784eb2fe23d729da230) (Block `#83716253` eval / `#83716262` settled) |
+| **5. `live:test` Smoke-Test Grant & Attribution Transfer** | Harness smoke-test grant (`0.15 USDC/tx · 0.30 USDC total · USDC.transfer allowlist`, Block `#83506620`) + `0.05 USDC` ERC-8021 verification transfer | Grant [`0x928012be...ae8f954a`](https://celoscan.io/tx/0x928012be32adf147c343ab658b26ccef5e4928eafeb48ce2d8849931ae8f954a) · Transfer [`0xcb30c996...dbf1c27`](https://celoscan.io/tx/0xcb30c9969a2816bbffee446c17eaf840ccd57548656f97f845013e6c1dbf1c27) |
+| **6. Negative Tests (Altana KeyStore / Relay)** | Direct Altana Relay / KeyStore calls bypassing TypeScript pre-flight: un-allowlisted USD₮ call and `0.35 USDC > 0.30 USDC` over-cap spend | Rejected pre-inclusion by Altana Relay / KeyStore: `[call_not_permitted]` and `[spend_limit_exceeded]` (no gas burned on mined revert; reproducible via `npm run live:test -- --confirm-mainnet` Steps 4c/4d) |
+| **7. 1-Tx Emergency Revoke** | Instant KeyStore session key revocation (`revokeSession`) | [`0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320`](https://celoscan.io/tx/0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320) |
 
-**Repeat-Use & Decision Log Status:** Two distinct mainnet `USDC -> CELO` Auto-DCA executions are settled on Celo Mainnet (Blocks `#83540877` and `#83625775`), and [`logs/decisions.jsonl`](./logs/decisions.jsonl) records live block-anchored `DRY_RUN` evaluations (Blocks `#83600911` `DEFER` at `+104.91 bps` above 24h TWAP and `#83632631` `EXECUTE` at `-216.18 bps` dip). Additional recurring `dca:tick --live` transactions are tracked in `LIVE_DCA_TICK_PROOFS` (`web/src/data/mainnetProof.ts`) as they settle.
+**Repeat-Use & Decision Log Status:** Three settled live `USDC -> CELO` Auto-DCA executions are verified on Celo Mainnet across Blocks `#83540877`, `#83625775` (`@MFauzulAzim`), and `#83716253` (autonomous session-key Tick #3), alongside block-anchored `DRY_RUN` and `LIVE` records in [`logs/decisions.jsonl`](./logs/decisions.jsonl) (Blocks `#83600911` `DEFER`, `#83632631` `EXECUTE`, `#83716209` `EXECUTE`, and `#83716253` `LIVE EXECUTE`). Additional recurring `dca:tick --live` transactions are tracked in `LIVE_DCA_TICK_PROOFS` (`web/src/data/mainnetProof.ts`) as they settle.
 
 ---
 
 ## Agent Decision Gate (`dca:tick`) & Verifiable Audit Log
 
-The Agent Execution Plane (`src/cli/dca-tick.ts`, documented in [`SKILL.md`](./SKILL.md)) evaluates live Celo Mainnet Uniswap V3 `USDC/CELO` (`0.01%`, `fee = 100`) pool state before every 4-hour tick (recommended `$1.00` order size under a `$4.00/day` Altana on-chain spend cap):
+The Agent Execution Plane (`src/cli/dca-tick.ts`, documented in [`SKILL.md`](./SKILL.md)) evaluates live Celo Mainnet Uniswap V3 `USDC/CELO` (`0.01%`, `fee = 100`) pool state before every 4-hour tick (recommended `$1.00` order size under the unified `$4.00/day` default Altana on-chain spend cap, configurable via `--daily-cap` up to `10 USDC/day`):
 
 * **Dual Slippage Guardrail:**
   * **Pre-flight (`5 bps` / `0.05%` default):** Estimates single-tick price impact from live `liquidity()` and `sqrtPriceX96`. Orders exceeding `5 bps` return `DEFER` (`POOL_IMPACT_EXCEEDED`).
@@ -77,12 +78,12 @@ The Agent Execution Plane (`src/cli/dca-tick.ts`, documented in [`SKILL.md`](./S
 * Live Celo Mainnet (`Chain ID 42220`) execution runs through `AltanaLiveAdapter` backed by `@altananetwork/sdk` (`v1.1.0`), Altana's Celo KeyStore (`0x83b30935f36d6ccf9B1ec3b5E47F2866b97cd27c`), `viem`, and `@celo/attribution-tags` (`v0.5.0`, ERC-8021).
 
 ### 2. Enforcement Layer: On-Chain vs Off-Chain
-* **On-chain enforcement (Altana EIP-7702 Session Key):** Daily Native USDC `spendCap`, strict contract + raw 4-byte selector lock (`SwapRouter02` `0x5615CDAb10dc425a742d643d949a7F474C01abc4` + `0x04e45aaf` `exactInputSingle` only), bounded owner-side `USDC.approve(SwapRouter02, dailyCap * days)` provisioned during `session:grant` (never `maxUint256`; `USDC.approve` `0x095ea7b3`, `sweepToken` `0xdf2ab5bb`, and `multicall` `0xac9650d8` are blocked from session keys), hard expiry, and permanent **1-tx revoke** at the Altana KeyStore level. Unauthorized contracts or over-cap spends revert on-chain (`[call_not_permitted]`, `[spend_limit_exceeded]`).
+* **On-chain enforcement (Altana EIP-7702 Session Key):** Daily Native USDC `spendCap` (`$4.00/day` default, configurable up to `10 USDC/day`), strict contract + raw 4-byte selector lock (`SwapRouter02` `0x5615CDAb10dc425a742d643d949a7F474C01abc4` + `0x04e45aaf` `exactInputSingle` only), bounded owner-side `USDC.approve(SwapRouter02, dailyCap * days)` provisioned during `session:grant` (never `maxUint256`; `USDC.approve` `0x095ea7b3`, `sweepToken` `0xdf2ab5bb`, and `multicall` `0xac9650d8` are blocked from session keys), hard expiry, and permanent **1-tx revoke** at the Altana KeyStore level. Unauthorized contracts or over-cap spends revert on-chain (`[call_not_permitted]`, `[spend_limit_exceeded]`).
 * **Off-chain agent policy (TypeScript / Zod pre-flight):** ABI parameter constraints (`recipient == walletAddress`, `tokenOut == CELO`, `fee == 100`), on-chain `simulateContract` quote check for `amountOutMinimum` (`25 bps` execution slippage in `dca:tick`, `100 bps` default in web UI), `+50 bps` asymmetric 24h TWAP gate, `5 bps` pool impact ceiling, `+15%` weekly ceiling, and block-anchored JSONL audit logging. See [`SECURITY.md`](./SECURITY.md) for the explicit threat model and bounded worst-case loss formula (`min(wallet_USDC_balance, dailyCap * remainingDays) + wallet_CELO_gas_balance`).
 
 ---
 
-## Celo Mainnet Liquidity Reality (Verified On-Chain, Celo Mainnet Blocks `#83540877` - `#83600911`)
+## Celo Mainnet Liquidity Reality (Verified On-Chain, Celo Mainnet Blocks `#83540877` - `#83716253`)
 
 CapRail intentionally restricts its active allowlist to a single verified pair: **`USDC -> CELO`** on Uniswap V3 `SwapRouter02` (`0x5615CDAb10dc425a742d643d949a7F474C01abc4`, `0.01%` fee tier, pool `0xA1777e082fA1746eB78DD9C1fbB515419CF6e538`).
 
@@ -131,7 +132,7 @@ Thin DEX liquidity on Celo Mainnet is the practical engineering reason autonomou
 .
 ├── src/
 │   ├── config/env.ts                  # Allowlisted env loader (no raw process.env forwarding)
-│   ├── policy/                        # Zod schemas (SessionPolicy, DcaStrategy) + guardrail evaluator
+│   ├── policy/                        # Zod schemas (SessionPolicy, DcaStrategy, DcaDecisionPolicy) + guardrail evaluator
 │   ├── wallet/
 │   │   ├── attribution.ts             # @celo/attribution-tags (ERC-8021) Loops House tag (celo_0518175d3efe)
 │   │   ├── calldata.ts                # SwapRouter02 exactInputSingle (0x04e45aaf) + slippage floor + ERC-8021 suffix
@@ -149,8 +150,8 @@ Thin DEX liquidity on Celo Mainnet is the practical engineering reason autonomou
 │       ├── check-network.ts           # Read-only Celo Mainnet (42220) + Altana SDK probe
 │       ├── dry-run.ts                 # Local simulation runner (positive + negative Auto-DCA tests)
 │       ├── grant-session.ts           # Owner-only one-time Altana session provisioning CLI
-│       ├── dca-tick.ts                # Session-only agent CLI runner (--dry-run / --live)
-│       └── live-test.ts               # Live Celo Mainnet session grant, verification tx, negative tests, 1-tx revoke
+│       ├── dca-tick.ts                # Session-only agent CLI runner (--dry-run / --live / --daily-cap)
+│       └── live-test.ts               # Live Celo Mainnet smoke-test grant, verification tx, negative tests, 1-tx revoke
 ├── web/                               # Human Control Plane (React 19 + Vite + Tailwind + viem)
 ├── tests/
 │   ├── guardrails.test.ts             # Policy, Auto-DCA, slippage, Altana, ERC-8021, ERC-8004 tests
@@ -182,7 +183,7 @@ Follow these three steps to run CapRail end-to-end on Celo Mainnet (`Chain ID 42
 
 ### 1. Provision Bounded Approval & Scoped Session Key (Owner Local Machine Only)
 
-Set `OWNER_PRIVATE_KEY` (and optional `ALTANA_WALLET_ADDRESS`) in your local `.env` (never on a VPS), then preview and grant the session key:
+Set `OWNER_PRIVATE_KEY` (and optional `ALTANA_WALLET_ADDRESS`) in your local `.env` (never on a VPS), then preview and grant the session key (`--daily-cap` defaults to `4` USDC/day, configurable up to `10` USDC/day):
 
 ```bash
 # Preview bounded USDC.approve (dailyCap * days) and 0x04e45aaf selector lock
@@ -192,7 +193,7 @@ npm run session:grant -- --dry-run --daily-cap 4 --days 14
 npm run session:grant -- --daily-cap 4 --days 14
 ```
 
-* **Expected output:** Confirmed Altana KeyStore grant transaction (verified mainnet example: [`0x928012be32adf147c343ab658b26ccef5e4928eafeb48ce2d8849931ae8f954a`](https://celoscan.io/tx/0x928012be32adf147c343ab658b26ccef5e4928eafeb48ce2d8849931ae8f954a)) plus the two session-only `.env` lines to copy to your agent host.
+* **Expected output:** Confirmed bounded owner `USDC.approve` (`$56.00 USDC`, verified example: [`0x1d4d18c51897af8607f3ed755cbaa3ce72ed97e0006eb243812e0ea64fcf60e6`](https://celoscan.io/tx/0x1d4d18c51897af8607f3ed755cbaa3ce72ed97e0006eb243812e0ea64fcf60e6)) + confirmed `SwapRouter02` (`0x04e45aaf`) KeyStore grant transaction (verified mainnet example: [`0xc9557761ad247e5d6d17d5d2e22184968c5f91fd19d61e60f896b70fd4268a3c`](https://celoscan.io/tx/0xc9557761ad247e5d6d17d5d2e22184968c5f91fd19d61e60f896b70fd4268a3c)), plus the two session-only `.env` lines to copy to your agent host.
 
 ### 2. Run Autonomous Guardrailed Swap Tick (Session-Only Agent Host / VPS)
 
@@ -205,17 +206,22 @@ CELO_RPC_URL=https://forno.celo.org
 CELO_ATTRIBUTION_CODE=celo_0518175d3efe
 ```
 
-Execute a live market-gated tick:
+Execute a live market-gated tick (passing `--daily-cap` if overriding the `4.0` USDC/day default):
 
 ```bash
-npm run dca:tick -- --live --amount 1
+npm run dca:tick -- --live --amount 0.1 --daily-cap 4
 ```
 
-* **Expected output:** Single-line block-anchored JSON appended to `logs/decisions.jsonl` and printed to `stdout`. When pool impact `<= 5 bps` and spot is `<= +50 bps` above 24h TWAP, `dca:tick` broadcasts `SwapRouter02.exactInputSingle` (`0x04e45aaf`) with `25 bps` slippage protection and ERC-8021 tag `celo_0518175d3efe` (verified mainnet examples: primary wallet [`0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b`](https://celoscan.io/tx/0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b) and external collaborator `@MFauzulAzim` [`0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5`](https://celoscan.io/tx/0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5)).
+> **Windows PowerShell Note:** PowerShell's argument parser can drop `--` separators passed through `npm run`. On Windows PowerShell, run `tsx` directly so flags are preserved reliably:
+> ```powershell
+> npx tsx src/cli/dca-tick.ts --live --amount 0.1 --daily-cap 4
+> ```
+
+* **Expected output:** Single-line block-anchored JSON appended to `logs/decisions.jsonl` and printed to `stdout`. When pool impact `<= 5 bps` and spot is `<= +50 bps` above 24h TWAP, `dca:tick` broadcasts `SwapRouter02.exactInputSingle` (`0x04e45aaf`) with `25 bps` slippage protection and ERC-8021 tag `celo_0518175d3efe` (verified mainnet examples: session-key Tick #3 [`0xa220f30f05d0c0e065340b2716ceb9d5b47b266a756bd784eb2fe23d729da230`](https://celoscan.io/tx/0xa220f30f05d0c0e065340b2716ceb9d5b47b266a756bd784eb2fe23d729da230), primary wallet Swap #1 [`0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b`](https://celoscan.io/tx/0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b), and external collaborator `@MFauzulAzim` [`0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5`](https://celoscan.io/tx/0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5)).
 
 ### 3. Verify Negative Guardrails & 1-Tx Emergency Revoke (Owner Local Machine)
 
-Run the end-to-end Celo Mainnet smoke test (explicitly gated by `--confirm-mainnet`), which executes a scoped grant, ERC-8021 attribution check, live Altana negative tests (`[call_not_permitted]`, `[spend_limit_exceeded]`), and immediate **1-tx KeyStore revoke**:
+Run the end-to-end Celo Mainnet smoke-test harness (explicitly gated by `--confirm-mainnet`), which executes a scoped smoke-test grant (`0x928012be...`), ERC-8021 attribution check (`0xcb30c996...`), live Altana negative tests (`[call_not_permitted]`, `[spend_limit_exceeded]`), and immediate **1-tx KeyStore revoke**:
 
 ```bash
 npm run live:test -- --confirm-mainnet

@@ -89,6 +89,7 @@ npm run dca:tick -- --live --amount 1
 | `--dry-run` | `true` (default) | Evaluate live pool state and log decision without broadcasting a transaction |
 | `--live` | `false` | Broadcast swap via Altana Session Key when `decision === "EXECUTE"` |
 | `--amount <usdc>` | `0.5` | Order size in Native USDC (recommended `$1.00`: `--amount 1`) |
+| `--daily-cap <usdc>` | `4.0` | Daily USDC spend cap enforced pre-flight and passed to session execution (configurable up to `10` USDC/day) |
 | `--max-impact-bps <n>` | `5` | Pre-flight pool impact ceiling in bps (`5` bps = `0.05%`) |
 | `--max-deviation-bps <n>` | `50` | Asymmetric max upside deviation above 24h TWAP (`50` bps = `0.50%`) |
 | `--exec-slippage-bps <n>` | `25` | Execution slippage buffer passed into `amountOutMinimum` (`25` bps = `0.25%`) |
@@ -97,7 +98,13 @@ npm run dca:tick -- --live --amount 1
 Example with production cadence parameters:
 
 ```bash
-npm run dca:tick -- --dry-run --amount 1 --max-impact-bps 5 --max-deviation-bps 50 --exec-slippage-bps 25
+npm run dca:tick -- --dry-run --amount 1 --daily-cap 4 --max-impact-bps 5 --max-deviation-bps 50 --exec-slippage-bps 25
+```
+
+Windows PowerShell note: if PowerShell strips `--` flags via `npm run`, invoke `tsx` directly:
+
+```powershell
+npx tsx src/cli/dca-tick.ts --live --amount 0.1 --daily-cap 4
 ```
 
 ---
@@ -124,18 +131,18 @@ Every invocation prints a single-line JSON object to `stdout` and appends the id
 
 ```json
 {
-  "timestamp": "2026-11-24T06:00:00.000Z",
-  "mode": "DRY_RUN",
-  "blockNumber": 34567890,
-  "poolAddress": "0x...",
-  "sqrtPriceX96": "18830000000000000000000",
-  "spotPriceUsdcPerCelo": 0.0565,
-  "twap24hUsdcPerCelo": 0.0564,
-  "deviationBps": 17.73,
-  "estimatedPoolImpactBps": 1.97,
+  "timestamp": "2026-11-25T14:30:16.464Z",
+  "mode": "LIVE",
+  "blockNumber": 83716253,
+  "poolAddress": "0xA1777e082fA1746eB78DD9C1fbB515419CF6e538",
+  "sqrtPriceX96": "18188091207586882708500",
+  "spotPriceUsdcPerCelo": 0.052701,
+  "twap24hUsdcPerCelo": 0.053972,
+  "deviationBps": -235.49,
+  "estimatedPoolImpactBps": 0.2127,
   "decision": "EXECUTE",
-  "reason": "Approved: impact 1.97 bps <= 5 bps, deviation +17.73 bps <= +50 bps (execution slippage buffer: 25 bps)",
-  "txHash": null
+  "reason": "Executed live Auto-DCA via session key (0.1 USDC -> CELO, slippage=25 bps, tag=celo_0518175d3efe)",
+  "txHash": "0xa220f30f05d0c0e065340b2716ceb9d5b47b266a756bd784eb2fe23d729da230"
 }
 ```
 
