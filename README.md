@@ -15,6 +15,24 @@ CapRail is a non-custodial **Guardrailed Auto-DCA (`USDC -> CELO`)** system buil
 
 ---
 
+## Agent & Public Endpoints
+
+Both the primary Vercel control plane and a bot-accessible GitHub Pages static mirror (free of cloud-IP DDoS challenge interstitials) are live and return `HTTP 200` with embedded HTML metadata and a machine-readable ERC-8004 agent card:
+
+| Endpoint | URL | Purpose |
+| :--- | :--- | :--- |
+| **Primary Control Plane** | `https://caprail.vercel.app/` | Interactive Human Control Plane (`#app`, `#verify`) + static HTML fallback |
+| **Agent-Accessible Mirror** | `https://takaolovely.github.io/caprail/` | Static mirror (`200 OK` across datacenter/CDN IPs without challenge pages) |
+| **Agent Metadata JSON** | `https://takaolovely.github.io/caprail/.well-known/agent-card.json` | Machine-readable ERC-8004 identity, contract allowlist, guardrails & proof txs |
+
+Verify public reachability directly via `curl`:
+
+```bash
+curl -i https://takaolovely.github.io/caprail/
+curl -i https://takaolovely.github.io/caprail/.well-known/agent-card.json
+```
+---
+
 ## Two-Plane Architecture
 
 CapRail separates owner control from automated agent execution across two explicit planes:

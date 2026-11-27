@@ -1,20 +1,46 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <link rel="icon" type="image/png" sizes="64x64" href="/logo-64.png" />
-    <link rel="icon" type="image/png" sizes="256x256" href="/logo.png" />
-    <title>CapRail | Guardrailed Auto-DCA on Celo</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-    <link
-      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
-      rel="stylesheet"
-    />
-  </head>
-  <body class="bg-[#f2f4ef] text-[#15171c] antialiased selection:bg-[#10372a]/15 selection:text-[#15171c]">
-    <div id="root"></div>
-    <script type="module" src="/src/main.tsx"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="icon" type="image/png" sizes="64x64" href="/logo-64.png" />
+  <link rel="icon" type="image/png" sizes="256x256" href="/logo.png" />
+  <title>CapRail | Guardrailed Auto-DCA on Celo</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap"
+    rel="stylesheet" />
+</head>
+
+<body class="bg-[#f2f4ef] text-[#15171c] antialiased selection:bg-[#10372a]/15 selection:text-[#15171c]">
+  <div id="root">
+    <main>
+      <h1>CapRail: Guardrailed Auto-DCA (USDC -> CELO) on Celo Mainnet</h1>
+      <p>Non-custodial Guardrailed Auto-DCA system powered by Altana EIP-7702 Session Keys ($4.00/day default USDC spend
+        cap, SwapRouter02 selector 0x04e45aaf lock, slippage floor, and 1-tx revoke) on Celo Mainnet (Chain ID 42220).
+      </p>
+      <ul>
+        <li>Primary Control Plane: https://caprail.vercel.app</li>
+        <li>Agent-Accessible Static Mirror: https://takaolovely.github.io/caprail/</li>
+        <li>Agent Metadata Endpoint: https://takaolovely.github.io/caprail/.well-known/agent-card.json</li>
+        <li>Repository: https://github.com/takaolovely/caprail</li>
+        <li>Primary Agent Wallet (Celo Mainnet): 0x3631D44543384253C099f2A09c0D0bE109Eb7944</li>
+        <li>ERC-8004 Identity Registry: 0x8004A169FB4a3325136EB29fA0ceB6D2e539a432 (Agent ID #10109, tx
+          0x043cfd11e5d698932e7a6efb52ee9122b4edfe747f2c0237793b95c98e18a706)</li>
+        <li>ERC-8021 Builder Attribution Tag: celo_0518175d3efe</li>
+        <li>Uniswap V3 SwapRouter02: 0x5615CDAb10dc425a742d643d949a7F474C01abc4 (Pool USDC/CELO 0.01%:
+          0xA1777e082fA1746eB78DD9C1fbB515419CF6e538)</li>
+        <li>Verified Mainnet Proof Txs: Session Grant 0xc9557761ad247e5d6d17d5d2e22184968c5f91fd19d61e60f896b70fd4268a3c
+          | Swap #1 0x0c5d57fcdf7054194309aa3efc6ad868b5209d82b038f471aa5d8daf3f8ea56b | Swap #2 (@MFauzulAzim)
+          0x838a0216daf4bdac3b728f9471539d60bb9532970d7c43e0ac6b65b1040cfcc5 | Tick #3
+          0xa220f30f05d0c0e065340b2716ceb9d5b47b266a756bd784eb2fe23d729da230 | 1-Tx Revoke
+          0x1455448cb2fedd67aa7e46591328c09b4f75d3062f254b52dc429b624302d320</li>
+      </ul>
+    </main>
+  </div>
+  <script type="module" src="/src/main.tsx"></script>
+</body>
+
 </html>
