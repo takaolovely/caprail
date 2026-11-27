@@ -1,3 +1,5 @@
+/// <reference types="vite/client" />
+
 interface CapRailLogoProps {
   size?: number;
   className?: string;
@@ -6,7 +8,7 @@ interface CapRailLogoProps {
 export function CapRailLogo({ size = 32, className = "" }: CapRailLogoProps) {
   return (
     <img
-      src="/logo.png"
+      src={`${import.meta.env.BASE_URL}logo.png`}
       alt="CapRail"
       width={size}
       height={size}
